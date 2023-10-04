@@ -1,0 +1,2 @@
+websockets==10.3
+cattrs==22.2.0
