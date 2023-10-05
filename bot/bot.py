@@ -28,15 +28,21 @@ def collision_times(delta_pos: Vector, delta_vel: Vector,
 
 class Bot:
     def __init__(self):
-        pass
+        self.hit_list = set()
 
     def pick_target(self, game: GameMessage) -> Optional[Meteor]:
         if not game.meteors:
+            print('Nothing to shoot at (no meteors).')
             return None
-        # TODO: Pick target strategically (e.g. best score)
-        # TODO: Ignore meteors that we already shot at
         # TODO: Take into accounts meteors that will spawn
-        return game.meteors[0]
+        candidates = (
+            meteor for meteor in game.meteors if meteor.id not in self.hit_list)
+        # TODO: Rank canidates strategically (e.g. best score)
+        target = next(candidates, None)
+        if not target:
+            print('Nothing to shoot at (no candidate meteor).')
+            return None
+        return target
 
     def aim_ahead(self, cannon: Cannon, rockets: RocketsConstants,
                   target: Projectile) -> Optional[Vector]:
@@ -58,9 +64,13 @@ class Bot:
 
         target = self.pick_target(game)
         if target:
+            print(f'We are aiming at: {target}')
             aim = self.aim_ahead(game.cannon, game.constants.rockets, target)
+            # TODO: don't shoot if the aim would be unreachable
+            print(f'Aiming ahead at: {aim}')
             actions.append(LookAtAction(target=aim))
             if not game.cannon.cooldown:
+                self.hit_list.add(target.id)
                 actions.append(ShootAction())
 
         return actions
