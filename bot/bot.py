@@ -5,18 +5,12 @@ from game_message import *
 from actions import *
 
 
-def dot_product(a: Vector, b: Vector) -> float:
-    return a.x * b.x + a.y * b.y
-
-def vec_minus(a: Vector, b: Vector) -> Vector:
-    return Vector(a.x - b.x, a.y - b.y)
-
 def collision_times(delta_pos: Vector, delta_vel: Vector,
                     speed: float) -> Optional[Tuple[float, float]]:
     # https://gamedev.stackexchange.com/q/25277
-    a = dot_product(delta_vel, delta_vel) - speed * speed
-    b = 2 * dot_product(delta_vel, delta_pos)
-    c = dot_product(delta_pos, delta_pos)
+    a = delta_vel.dot(delta_vel) - speed * speed
+    b = 2 * delta_vel.dot(delta_pos)
+    c = delta_pos.dot(delta_pos)
 
     p = -b / (2 * a)
     det = b * b - 4 * a * c
@@ -28,22 +22,29 @@ def collision_times(delta_pos: Vector, delta_vel: Vector,
 
 class Bot:
     def __init__(self):
+        self.constants = None
         # TODO: We might miss our target (e.g. hit something else) -- handle.
+        # TODO: Clean up hit list when meteors are destroyed/gone
         self.hit_list = set()
+        # TODO: detect when expected explosions spawn, remove from this list
+        self.expected_explosions = {}
+        self.next_explosion_id = 0
 
     def get_candidates(self, meteors: List[Meteor]) -> List[Meteor]:
+        targets = [target for target in meteors
+                   if target.id not in self.hit_list]
         # TODO: Take into accounts meteors that will spawn
-        return [target for target in meteors if target.id not in self.hit_list]
+        return targets
 
-    def rank_candidates(self, candidates: List[Meteor], constants: Constants):
+    def rank_candidates(self, candidates: List[Meteor]):
         def _score(meteor: Meteor) -> float:
-            return constants.meteorInfos[meteor.meteorType].score
+            return self.constants.meteorInfos[meteor.meteorType].score
         candidates.sort(key=_score, reverse=True)
 
-    def aim_ahead(self, cannon: Cannon, rockets: RocketsConstants,
-                  target: Projectile) -> Optional[Vector]:
-        delta_pos = vec_minus(target.position, cannon.position)
-        times = collision_times(delta_pos, target.velocity, rockets.speed)
+    def aim_ahead(self, cannon: Cannon, target: Projectile) -> Optional[Vector]:
+        delta_pos = target.position.minus(cannon.position)
+        times = collision_times(delta_pos, target.velocity,
+                                self.constants.rockets.speed)
         if not times:
             return None
         # TODO: Take into account that our target is a sphere of size > 0
@@ -51,46 +52,102 @@ class Bot:
         time = next(iter(sorted(t for t in times if t >= 0)), None)
         if not time:
             return None
-        return Vector(target.position.x + target.velocity.x * time,
-                      target.position.y + target.velocity.y * time)
+        # # Game works in integer ticks, collision will happen at ceiling of time.
+        # # TODO: is this true? maybe the game updates at a faster rate
+        # tick = math.ceil(time)
+        print(f'Aiming ahead, will hit in time {time}')
+        return target.position.add(target.velocity.scale(time))
 
-    def can_reach_target(self,
-        cannon: Cannon,
-        world: WorldConstants,
-        target: Vector) -> bool:
+    def can_reach_target(self, cannon: Cannon, target: Vector) -> bool:
         if target.x < cannon.position.x:
             return False  # We missed the shot -- will pass us!
-        if target.y < 0 or target.y >= world.height:
+        if target.y < 0 or target.y >= self.constants.world.height:
             return False  # Asteroid will go off screen.
+        if target.x >= self.constants.world.width:
+            return False  # If asteroid explodes to the right
         return True
 
+    def expect_explosion(self, meteor: Meteor, position: Vector) -> None:
+        # TODO: this requires more work.
+        # First, the position approximation is not great.
+        # Still unclear if this is:
+        # - because we ignore the sphere size in collision prediction
+        # - because the parent collision happens on tick times?
+        # - because the children moved post-collision before the next tick?
+        # Second, the velocity approximation is not great.
+        # Still unclear if this is:
+        # - because the approximateSpeed is noisy -- e.g. 13.5... vs. 13
+        # - because the approximateAngle is noisy
+        # - because my logic for determining the new angle is wrong
+        # It would help if we tried to infer meteor parent/children to study
+        # this
+        parent_infos = self.constants.meteorInfos[meteor.meteorType]
+        parent_angle = meteor.velocity.angle()
+        print(f'Parent velocity: {meteor.velocity}')
+        print(f'Parent speed: {meteor.velocity.len()}')
+        print(f'Parent angle: {parent_angle}')
+        for explode in parent_infos.explodesInto:
+            child_info = self.constants.meteorInfos[explode.meteorType]
+            id_ = f'expl{self.next_explosion_id}'
+            self.next_explosion_id += 1
+            angle = math.radians(explode.approximateAngle)
+            print(f'Relative angle: {angle} (degrees: {explode.approximateAngle})')
+            angle += parent_angle
+            print(f'Angle: {angle}')
+            direction = Vector.from_angle(angle)
+            print(f'Dir: {direction}')
+            speed = child_info.approximateSpeed
+            print(f'Speed: {speed}')
+            velocity = direction.scale(speed)
+            new_meteor = Meteor(
+                id=id_, position=position, velocity=velocity,
+                size=child_info.size, meteorType=explode.meteorType)
+            print(f'Expect meteor {meteor.id} to explode into: {new_meteor}')
+            # TODO: new_meteor doesn't match reality super well.
+            # - Is approximateSpeed & approximateAngle deliberately noisy?
+            # - Is the position off because of sub-tick simulation?
+            #   Also because we're ignoring meteor sizes?
 
     def get_next_move(self, game: GameMessage):
+        if not self.constants:
+            self.constants = game.constants
+            print(self.constants)
+
         actions = []
+
+        smalls = [m for m in game.meteors if m.meteorType == MeteorType.Small]
+        if smalls:
+            print(smalls)
+            for m in smalls:
+                print(f'M.angle: {m.velocity.angle()}')
+                print(f'M.speed: {m.velocity.len()}')
+            exit(1)
 
         if not game.meteors:
             print('No meteors to shoot at!')
         targets = self.get_candidates(game.meteors)
         if not targets:
             print('No active targets to shoot at!')
-        self.rank_candidates(targets, game.constants)
+        self.rank_candidates(targets)
         for target in targets:
             print(f'Considering target: {target}')
-            aim = self.aim_ahead(game.cannon, game.constants.rockets, target)
+            aim = self.aim_ahead(game.cannon, target)
             if not aim:
                 print('Can not reach target (no collision found).')
                 continue
             print(f'Aiming ahead at: {aim}')
-            if not self.can_reach_target(
-                game.cannon, game.constants.world, aim):
+            if not self.can_reach_target(game.cannon, aim):
                 print('Can not reach aim (off-screen/past us).')
                 continue
+            # TODO: skip target if would be after the end of the game
             actions.append(LookAtAction(target=aim))
 
             if not game.cannon.cooldown:
                 print(f'Shooting! Marking {target.id} on our hit-list.')
                 self.hit_list.add(target.id)
                 actions.append(ShootAction())
+                # TODO: requires more work.
+                # self.expect_explosion(target, aim)
             else:
                 print(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
             break  # Successful target found. Stop looping.

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Dict
+import math
 from enum import Enum, unique
+from typing import List, Dict
 
 
 @dataclass
@@ -21,6 +22,27 @@ class GameMessage:
 class Vector:
    x: float 
    y: float 
+
+   def from_angle(angle: float) -> 'Vector':
+       return Vector(math.cos(angle), math.sin(angle))
+
+   def len(self) -> float:
+       return math.sqrt(self.x * self.x + self.y * self.y)
+
+   def angle(self) -> float:
+       return math.atan2(self.y, self.x)
+
+   def dot(self, other: 'Vector') -> float:
+       return self.x * other.x + self.y * other.y
+
+   def add(self, other: 'Vector') -> 'Vector':
+       return Vector(self.x + other.x, self.y + other.y)
+
+   def minus(self, other: 'Vector') -> 'Vector':
+       return Vector(self.x - other.x, self.y - other.y)
+
+   def scale(self, a: float) -> Vector:
+       return Vector(self.x * a, self.y * a)
 
 
 @dataclass

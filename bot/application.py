@@ -34,16 +34,16 @@ async def game_loop(websocket: websockets.WebSocketServerProtocol, bot: Bot):
             print("Websocket was closed.")
             break
 
-        game_message: GameMessage = cattrs.structure(json.loads(message), GameMessage)
-        print(f"Playing tick {game_message.tick}")
+        game: GameMessage = cattrs.structure(json.loads(message), GameMessage)
+        print(f"Playing tick {game.tick}. Score: {game.score}")
 
-        if game_message.lastTickErrors:
-            print(f'Errors during last tick : {game_message.lastTickErrors}')
+        if game.lastTickErrors:
+            print(f'Errors during last tick : {game.lastTickErrors}')
 
         payload = {
             "type": "COMMAND",
-            "tick": game_message.tick,
-            "actions": [dataclasses.asdict(action) for action in bot.get_next_move(game_message)]
+            "tick": game.tick,
+            "actions": [dataclasses.asdict(action) for action in bot.get_next_move(game)]
         }
 
         print(json.dumps(payload))
