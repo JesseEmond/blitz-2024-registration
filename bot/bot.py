@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from game_message import *
 from actions import *
@@ -28,21 +28,17 @@ def collision_times(delta_pos: Vector, delta_vel: Vector,
 
 class Bot:
     def __init__(self):
+        # TODO: We might miss our target (e.g. hit something else) -- handle.
         self.hit_list = set()
 
-    def pick_target(self, game: GameMessage) -> Optional[Meteor]:
-        if not game.meteors:
-            print('Nothing to shoot at (no meteors).')
-            return None
+    def get_candidates(self, meteors: List[Meteor]) -> List[Meteor]:
         # TODO: Take into accounts meteors that will spawn
-        candidates = (
-            meteor for meteor in game.meteors if meteor.id not in self.hit_list)
-        # TODO: Rank canidates strategically (e.g. best score)
-        target = next(candidates, None)
-        if not target:
-            print('Nothing to shoot at (no candidate meteor).')
-            return None
-        return target
+        return [target for target in meteors if target.id not in self.hit_list]
+
+    def rank_candidates(self, candidates: List[Meteor], constants: Constants):
+        def _score(meteor: Meteor) -> float:
+            return constants.meteorInfos[meteor.meteorType].score
+        candidates.sort(key=_score, reverse=True)
 
     def aim_ahead(self, cannon: Cannon, rockets: RocketsConstants,
                   target: Projectile) -> Optional[Vector]:
@@ -62,15 +58,28 @@ class Bot:
     def get_next_move(self, game: GameMessage):
         actions = []
 
-        target = self.pick_target(game)
-        if target:
-            print(f'We are aiming at: {target}')
+        if not game.meteors:
+            print('No meteors to shoot at!')
+        targets = self.get_candidates(game.meteors)
+        if not targets:
+            print('No active targets to shoot at!')
+        self.rank_candidates(targets, game.constants)
+        for target in targets:
+            print(f'Considering target: {target}')
             aim = self.aim_ahead(game.cannon, game.constants.rockets, target)
-            # TODO: don't shoot if the aim would be unreachable
+            if not aim:
+                print('Can not reach target.')
+                continue
+            # TODO: don't shoot if the aim would be unreachable (angle-wise/off-screen)
             print(f'Aiming ahead at: {aim}')
             actions.append(LookAtAction(target=aim))
+
             if not game.cannon.cooldown:
+                print(f'Shooting! Marking {target.id} on our hit-list.')
                 self.hit_list.add(target.id)
                 actions.append(ShootAction())
+                break
+            else:
+                print(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
 
         return actions
