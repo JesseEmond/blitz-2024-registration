@@ -6,6 +6,9 @@ from enum import Enum, unique
 from typing import List, Dict
 
 
+TOTAL_TICKS = 1000
+
+
 @dataclass
 class GameMessage:
     type: str

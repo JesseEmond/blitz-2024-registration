@@ -1,8 +1,17 @@
+import dataclasses
 import math
 from typing import List, Optional, Tuple
 
 from game_message import *
 from actions import *
+
+
+@dataclasses.dataclass
+class CollisionInfo:
+    # 'target' is the center position of the target at the time of collision.
+    target: Vector
+    # time from now until the collision occurs
+    delta_t: float
 
 
 def collision_times(delta_pos: Vector, delta_vel: Vector,
@@ -41,7 +50,8 @@ class Bot:
             return self.constants.meteorInfos[meteor.meteorType].score
         candidates.sort(key=_score, reverse=True)
 
-    def aim_ahead(self, cannon: Cannon, target: Projectile) -> Optional[Vector]:
+    def aim_ahead(
+        self, cannon: Cannon, target: Projectile) -> Optional[CollisionInfo]:
         delta_pos = target.position.minus(cannon.position)
         times = collision_times(delta_pos, target.velocity,
                                 self.constants.rockets.speed)
@@ -56,7 +66,8 @@ class Bot:
         # # TODO: is this true? maybe the game updates at a faster rate
         # tick = math.ceil(time)
         print(f'Aiming ahead, will hit in time {time}')
-        return target.position.add(target.velocity.scale(time))
+        pos = target.position.add(target.velocity.scale(time))
+        return CollisionInfo(target=pos, delta_t=time)
 
     def can_reach_target(self, cannon: Cannon, target: Vector) -> bool:
         if target.x < cannon.position.x:
@@ -111,17 +122,9 @@ class Bot:
     def get_next_move(self, game: GameMessage):
         if not self.constants:
             self.constants = game.constants
-            print(self.constants)
+            print(f'Constants: {self.constants}')
 
         actions = []
-
-        smalls = [m for m in game.meteors if m.meteorType == MeteorType.Small]
-        if smalls:
-            print(smalls)
-            for m in smalls:
-                print(f'M.angle: {m.velocity.angle()}')
-                print(f'M.speed: {m.velocity.len()}')
-            exit(1)
 
         if not game.meteors:
             print('No meteors to shoot at!')
@@ -131,23 +134,25 @@ class Bot:
         self.rank_candidates(targets)
         for target in targets:
             print(f'Considering target: {target}')
-            aim = self.aim_ahead(game.cannon, target)
-            if not aim:
+            collision = self.aim_ahead(game.cannon, target)
+            if not collision:
                 print('Can not reach target (no collision found).')
                 continue
-            print(f'Aiming ahead at: {aim}')
-            if not self.can_reach_target(game.cannon, aim):
+            print(f'Aiming ahead at: {collision}')
+            if not self.can_reach_target(game.cannon, collision.target):
                 print('Can not reach aim (off-screen/past us).')
                 continue
-            # TODO: skip target if would be after the end of the game
-            actions.append(LookAtAction(target=aim))
+            if game.tick + collision.delta_t >= TOTAL_TICKS:
+                print(f'Can not reach target in time: {game.tick + collision.delta_t}')
+                continue
+            actions.append(LookAtAction(target=collision.target))
 
             if not game.cannon.cooldown:
                 print(f'Shooting! Marking {target.id} on our hit-list.')
                 self.hit_list.add(target.id)
                 actions.append(ShootAction())
                 # TODO: requires more work.
-                # self.expect_explosion(target, aim)
+                # self.expect_explosion(target, collision.target)
             else:
                 print(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
             break  # Successful target found. Stop looping.
