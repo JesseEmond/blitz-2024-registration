@@ -54,6 +54,16 @@ class Bot:
         return Vector(target.position.x + target.velocity.x * time,
                       target.position.y + target.velocity.y * time)
 
+    def can_reach_target(self,
+        cannon: Cannon,
+        world: WorldConstants,
+        target: Vector) -> bool:
+        if target.x < cannon.position.x:
+            return False  # We missed the shot -- will pass us!
+        if target.y < 0 or target.y >= world.height:
+            return False  # Asteroid will go off screen.
+        return True
+
 
     def get_next_move(self, game: GameMessage):
         actions = []
@@ -68,18 +78,21 @@ class Bot:
             print(f'Considering target: {target}')
             aim = self.aim_ahead(game.cannon, game.constants.rockets, target)
             if not aim:
-                print('Can not reach target.')
+                print('Can not reach target (no collision found).')
                 continue
-            # TODO: don't shoot if the aim would be unreachable (angle-wise/off-screen)
             print(f'Aiming ahead at: {aim}')
+            if not self.can_reach_target(
+                game.cannon, game.constants.world, aim):
+                print('Can not reach aim (off-screen/past us).')
+                continue
             actions.append(LookAtAction(target=aim))
 
             if not game.cannon.cooldown:
                 print(f'Shooting! Marking {target.id} on our hit-list.')
                 self.hit_list.add(target.id)
                 actions.append(ShootAction())
-                break
             else:
                 print(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
+            break  # Successful target found. Stop looping.
 
         return actions
