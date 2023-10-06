@@ -29,8 +29,17 @@ class Vector:
    def from_angle(angle: float) -> 'Vector':
        return Vector(math.cos(angle), math.sin(angle))
 
+   def norm(self) -> 'Vector':
+       return self.scale(1 / self.len())
+
+   def inv(self) -> 'Vector':
+       return Vector(-self.x, -self.y)
+
    def len(self) -> float:
-       return math.sqrt(self.x * self.x + self.y * self.y)
+       return math.sqrt(self.len_sq())
+
+   def len_sq(self) -> float:
+        return self.x * self.x + self.y * self.y
 
    def angle(self) -> float:
        return math.atan2(self.y, self.x)

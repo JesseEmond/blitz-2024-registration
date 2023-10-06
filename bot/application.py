@@ -16,7 +16,8 @@ async def run():
     uri = "ws://127.0.0.1:8765"
 
     async with websockets.connect(uri, max_size=None) as websocket:
-        bot = Bot()
+        is_server = "TOKEN" in os.environ
+        bot = Bot(verbose=is_server or 'VERBOSE' in os.environ)
         if "TOKEN" in os.environ:
             await websocket.send(json.dumps({"type": "REGISTER", "token": os.environ["TOKEN"]}))
         else:
@@ -35,7 +36,6 @@ async def game_loop(websocket: websockets.WebSocketServerProtocol, bot: Bot):
             break
 
         game: GameMessage = cattrs.structure(json.loads(message), GameMessage)
-        print(f"Playing tick {game.tick}. Score: {game.score}")
 
         if game.lastTickErrors:
             print(f'Errors during last tick : {game.lastTickErrors}')
@@ -45,8 +45,6 @@ async def game_loop(websocket: websockets.WebSocketServerProtocol, bot: Bot):
             "tick": game.tick,
             "actions": [dataclasses.asdict(action) for action in bot.get_next_move(game)]
         }
-
-        print(json.dumps(payload))
 
         await websocket.send(json.dumps(payload))
 
