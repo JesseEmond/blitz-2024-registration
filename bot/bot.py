@@ -185,8 +185,9 @@ def rewind_collision(
 
 
 class Bot:
-    def __init__(self, verbose: bool):
-        self.verbose = verbose
+    def __init__(self, on_server: bool):
+        self.verbose = on_server
+        self.debug_mode = not on_server
         self.constants = None
         self.tracker = Tracker()
         # TODO: We might miss our target (e.g. hit something else) -- handle.
@@ -202,12 +203,50 @@ class Bot:
         # TODO: Take into accounts meteors that will spawn
         return targets
 
-    def rank_candidates(self, candidates: List[Meteor]):
+    def expect(self, value: bool, msg: str) -> bool:
+        if self.debug_mode:
+            assert value, msg
+        elif not value:
+            print(f'[EXPECTATION failure]: {msg}')
+        return value
+
+    def time_until_oob(self, projectile: Projectile, cannon: Cannon) -> float:
+        """Time until a given projectile goes out of bounds."""
+        # Note: treat passing the cannon as out-of-bounds, too.
+        left = cannon.position.x
+        right = self.constants.world.width
+        top = 0
+        bottom = self.constants.world.height
+        x, y = projectile.position.x, projectile.position.y
+        vx, vy = projectile.velocity.x, projectile.velocity.y
+        if x < left or x >= right or y < top or y >= bottom:
+            return 0
+        assert vx != 0 or vy != 0
+        tx = None
+        if vx > 0:
+            tx = (right - x) / vx
+        elif vx < 0:
+            tx = (x - left) / (-vx)
+        ty = None
+        if vy > 0:
+            ty = (bottom - y) / vy
+        elif vy < 0: 
+            ty = (y - top) / (-vy)
+        tx = tx if tx is not None else ty
+        ty = ty if ty is not None else tx
+        return min(tx, ty)
+
+    def rank_candidates(self, cannon: Cannon, candidates: List[Meteor]):
         # TODO: avoid shooting large/medium meteors that will spawn meteors too
         # close to the edge?
         def _score(meteor: Meteor) -> float:
-            return self.constants.meteorInfos[meteor.meteorType].score
-        candidates.sort(key=_score, reverse=True)
+            score = self.constants.meteorInfos[meteor.meteorType].score
+            time = self.time_until_oob(meteor, cannon)
+            # Prio:
+            # - higher score (-score)
+            # - time left until it exits the area (more urgent)
+            return (-score, time)
+        candidates.sort(key=_score)
 
     def aim_ahead(
         self, cannon: Cannon, target: Projectile) -> Optional[CollisionInfo]:
@@ -307,7 +346,7 @@ class Bot:
         targets = self.get_candidates(game.meteors)
         if not targets:
             self.info('No active targets to shoot at!')
-        self.rank_candidates(targets)
+        self.rank_candidates(game.cannon, targets)
         for target in targets:
             self.info(f'Considering target: {target}')
             collision = self.aim_ahead(game.cannon, target)
