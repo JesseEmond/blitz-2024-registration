@@ -14,6 +14,7 @@ class Bot:
         self.verbose = on_server
         self.debug_mode = not on_server
         self.constants = None
+        self.bounds = None
         self.tracker = tracker.Tracker()
         # TODO: We might miss our target (e.g. hit something else) -- handle.
         # TODO: Clean up hit list when meteors are destroyed/gone
@@ -35,38 +36,12 @@ class Bot:
             print(f'[EXPECTATION failure]: {msg}')
         return value
 
-    def time_until_oob(self, projectile: Projectile, cannon: Cannon) -> float:
-        """Time until a given projectile goes out of bounds."""
-        # Note: treat passing the cannon as out-of-bounds, too.
-        left = cannon.position.x
-        right = self.constants.world.width
-        top = 0
-        bottom = self.constants.world.height
-        x, y = projectile.position.x, projectile.position.y
-        vx, vy = projectile.velocity.x, projectile.velocity.y
-        if x < left or x >= right or y < top or y >= bottom:
-            return 0
-        assert vx != 0 or vy != 0
-        tx = None
-        if vx > 0:
-            tx = (right - x) / vx
-        elif vx < 0:
-            tx = (x - left) / (-vx)
-        ty = None
-        if vy > 0:
-            ty = (bottom - y) / vy
-        elif vy < 0: 
-            ty = (y - top) / (-vy)
-        tx = tx if tx is not None else ty
-        ty = ty if ty is not None else tx
-        return min(tx, ty)
-
     def rank_candidates(self, cannon: Cannon, candidates: List[Meteor]):
         # TODO: avoid shooting large/medium meteors that will spawn meteors too
         # close to the edge?
         def _score(meteor: Meteor) -> float:
             score = self.constants.meteorInfos[meteor.meteorType].score
-            time = self.time_until_oob(meteor, cannon)
+            time = physics.time_until_out_of_bounds(meteor, self.bounds)
             # Prio:
             # - higher score (-score)
             # - time left until it exits the area (more urgent)
@@ -141,8 +116,9 @@ class Bot:
         self.info(f"Playing tick {game.tick}. Score: {game.score}")
 
         if not self.constants:
-            self.tracker.constants = game.constants
             self.constants = game.constants
+            self.bounds = physics.Bounds(game.cannon, game.constants.world)
+            self.tracker.first_tick(self.constants, self.bounds)
             self.info(f'Constants: {self.constants}')
 
         # TODO: tracker spawn detection isn't great -- is the spawn position

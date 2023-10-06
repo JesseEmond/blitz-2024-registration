@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from enum import Enum, unique
-from typing import List, Dict
+from typing import Dict, List, Tuple
 
 
 TOTAL_TICKS = 1000
@@ -56,6 +56,9 @@ class Vector:
    def scale(self, a: float) -> Vector:
        return Vector(self.x * a, self.y * a)
 
+   def components(self) -> Tuple[float, float]:
+       return self.x, self.y
+
 
 @dataclass
 class Cannon:
@@ -65,14 +68,18 @@ class Cannon:
 
 
 @dataclass
-class Circle:
+class Body:
     position: Vector
     velocity: Vector
     size: float
 
+    def advance(self, delta_t: float) -> 'Body':
+        new_pos = self.position.add(self.velocity.scale(delta_t))
+        return Body(position=new_pos, velocity=self.velocity, size=self.size)
+
 
 @dataclass
-class Projectile(Circle):
+class Projectile(Body):
     id: str
 
 

@@ -8,13 +8,13 @@ import physics
 
 
 @dataclasses.dataclass
-class MeteorInfo(Circle):
+class MeteorInfo(Body):
     spawns: List[str]
     type_: MeteorType
 
 
 @dataclasses.dataclass
-class RocketInfo(Circle):
+class RocketInfo(Body):
     pass
 
 
@@ -24,7 +24,13 @@ class Tracker:
     def __init__(self):
         self.meteors = {}  # ID to MeteorInfo
         self.rockets = {}  # ID to RocketInfo
-        self.constants = None  # Set on first tick.
+        # Set on first tick.
+        self.constants = None
+        self.bounds = None
+
+    def first_tick(self, constants: Constants, bounds: physics.Bounds) -> None:
+        self.constants = constants
+        self.bounds = bounds
 
     def update(self, game: GameMessage) -> None:
         # TODO: continue re-implementing the tracker
@@ -44,7 +50,7 @@ class Tracker:
 
     def _get_id_deltas(
         self, projectiles: List[Projectile],
-        infos: Mapping[str, Circle]) -> Tuple[Set[str], Set[str]]:
+        infos: Mapping[str, Body]) -> Tuple[Set[str], Set[str]]:
         seen = {proj.id for proj in projectiles}
         known_ids = set(infos.keys())
         new_ids = seen - known_ids
@@ -62,7 +68,9 @@ class Tracker:
             t = physics.next_collision_time(rocket, meteor)
             if t is None:
                 continue
-            # TODO: Check if any of the two would be OOB -- skip then
+            if (self.bounds.is_out(meteor.advance(t)) or
+                self.bounds.is_out(rocket.advance(t))):
+                continue
             if hit_meteor is None or t < hit_time:
                 hit_meteor = meteor_id
                 hit_time = t
