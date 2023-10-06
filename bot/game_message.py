@@ -65,11 +65,15 @@ class Cannon:
 
 
 @dataclass
-class Projectile:
-    id: str
+class Circle:
     position: Vector
     velocity: Vector
     size: float
+
+
+@dataclass
+class Projectile(Circle):
+    id: str
 
 
 @dataclass

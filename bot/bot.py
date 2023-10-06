@@ -1,85 +1,12 @@
-import dataclasses
 import math
 import time
 from typing import List, Optional, Tuple
 
 from game_message import *
 from actions import *
+
+import physics
 import tracker
-
-
-@dataclasses.dataclass
-class CollisionInfo:
-    # 'target' is the center position of the target at the time of collision.
-    target: Vector
-    # time from now until the collision occurs
-    delta_t: float
-    # position where the sphere collision happens on the target's radius
-    target_collision_point: Vector
-    # time where the centers would collide
-    center_collision_t: float
-
-
-def solve_quad(a: float, b: float, c: float) -> Optional[Tuple[float, float]]:
-    p = -b / (2 * a)
-    det = b * b - 4 * a * c
-    if det < 0:
-        return None  # No solution
-    q = math.sqrt(det) / (2 * a)
-    return p - q, p + q
-
-
-def collision_times(delta_pos: Vector, delta_vel: Vector,
-                    speed: float) -> Optional[Tuple[float, float]]:
-    # https://gamedev.stackexchange.com/q/25277
-    a = delta_vel.dot(delta_vel) - speed * speed
-    b = 2 * delta_vel.dot(delta_pos)
-    c = delta_pos.dot(delta_pos)
-    return solve_quad(a, b, c)
-
-
-def rewind_collision(
-    collision: CollisionInfo, cannon: Cannon,
-    target: Projectile, constants: Constants) -> None:
-    """Rewind center-based collision to when circles first intersect."""
-    # Now have time t where:
-    #   Pr + t Vr = Pm + t Vm
-    # If we rewind time on both lines (rocket line & target line), want to
-    # know the point where they have distance R =
-    # 'target.size + rocket.size' between them (i.e. when their spheres
-    # intersect).
-    # We get a new triangle:
-    # (C = collision point)
-    #         C
-    #        /A\
-    #    B  /   \ D
-    # We know the angle A (between -Vr and -Vm).
-    # B is -Vr times unk delta t
-    # D is -Vm time unk delta t
-    # BD is R.
-    # Law of cosines:
-    # R = sqrt(B^2 + D^2 - 2 B D cos A)
-    # R^2 = B^2 + D^2 - 2 B D cos A
-    # New quadratic to solve!
-    # (-Vr dt)^2 + (-Vm dt)^2 - 2 (-Vr dt) (-Vm dt) cos A - R^2 = 0
-    # (|Vr|^2 + |Vm|^2) dt^2  - 2 |Vr| |Vm| dt cos A - R^2 = 0
-    rocket = constants.rockets
-    r = rocket.size + target.size
-    collision_pt = target.position.add(target.velocity.scale(collision.center_collision_t))
-    rocket_vel = collision_pt.minus(cannon.position).norm().scale(rocket.speed)
-    target_vel = target.velocity
-    a = rocket_vel.len_sq() + target_vel.len_sq()
-    b = -2 * rocket_vel.inv().dot(target_vel.inv())
-    c = -r * r
-    ts = solve_quad(a, b, c)
-    assert ts, (a, b, c, cannon, target, constants, collision_time)
-    t = max(ts)
-    # TODO: validate that predicted times match with tracker
-    collision.delta_t -= t
-    rocket_pos = cannon.position.add(rocket_vel.scale(collision.delta_t))
-    target_pos = target.position.add(target.velocity.scale(collision.delta_t))
-    delta = target_pos.minus(rocket_pos).norm()
-    collision.target_collision_point = rocket_pos.add(delta.scale(rocket.size))
 
 
 class Bot:
@@ -146,28 +73,13 @@ class Bot:
             return (-score, time)
         candidates.sort(key=_score)
 
-    def aim_ahead(
-        self, cannon: Cannon, target: Projectile) -> Optional[CollisionInfo]:
-        delta_pos = target.position.minus(cannon.position)
-        times = collision_times(delta_pos, target.velocity,
-                                self.constants.rockets.speed)
-        if not times:
-            return None
-        # TODO: Can we hit targets slightly faster by taking into account the
-        # two sphere radii from the get-go?
-        collisions = [CollisionInfo(
-            target=target.position.add(target.velocity.scale(t)),
-            delta_t=t, center_collision_t=t,
-            target_collision_point=None) for t in times]
-        for collision in collisions:
-            rewind_collision(collision, cannon, target, self.constants)
-        collision = next(iter(
-            sorted(c for c in collisions if c.delta_t >= 0)), None)
+    def aim_ahead(self, cannon: Cannon,
+                  target: Projectile) -> Optional[physics.CollisionInfo]:
+        collision = physics.aim_at_moving_target(
+            cannon.position, self.constants.rockets.size,
+            self.constants.rockets.speed, target)
         if not collision:
             return None
-        # # Game works in integer ticks, collision will happen at ceiling of time.
-        # # TODO: is this true? maybe the game updates at a faster rate
-        # tick = math.ceil(time)
         self.info(f'Aiming ahead, will hit in time {collision.delta_t}')
         return collision
 
