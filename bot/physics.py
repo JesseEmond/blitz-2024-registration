@@ -83,3 +83,12 @@ def aim_at_moving_target(
         if not earliest or collision.delta_t < earliest.delta_t:
             earliest = collision
     return earliest
+
+
+def next_collision_time(a: Circle, b: Circle) -> Optional[float]:
+    r = a.size + b.size
+    a = a.velocity.len_sq() + b.velocity.len_sq()
+    b = -2 * a.velocity.dot(t.velocity)
+    c = -r * r
+    ts = solve_quadratic(a, b, c)
+    return min(ts) if ts else None
