@@ -43,7 +43,13 @@ class Tracker:
 
         self.meteors = {}  # ID to MeteorInfo
         self.rockets = {}  # ID to RocketInfo
+
         self.score = 0
+        self.lost_score = 0
+        self.broken_invariants = 0
+        self.wiffs = 0
+        self.hit_stats = {}
+        self.miss_stats = {}
 
         # Set on first tick.
         self.constants = None
@@ -56,13 +62,16 @@ class Tracker:
     def first_tick(self, constants: Constants, bounds: physics.Bounds) -> None:
         self.constants = constants
         self.bounds = bounds
+        self.hit_stats = {type_: 0 for type_ in MeteorType}
+        self.miss_stats = {type_: 0 for type_ in MeteorType}
 
     def update(self, game: GameMessage) -> None:
         self._debug_game = game
 
         changes = self.detect_changes(game)
         if changes.any_change():
-            print(f'Tick: {game.tick} (game score: {game.score})')
+            print(f'Tick: {game.tick} (game score: {game.score} / '
+                  f'{game.score + self.lost_score} potential)')
             if changes.just_shot:
                 print('PEW!')
 
@@ -131,6 +140,7 @@ class Tracker:
             print()
             print('Current tick:')
             game._debug_print()
+            self.broken_invariants += 1
         if self.debug_mode:
             assert true, fail_msg
         return true
@@ -185,6 +195,7 @@ class Tracker:
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
         self.score += info.score
+        self.hit_stats[meteor.type_] += 1
         print(f'[HIT] Rocket {rocket_id} hit {meteor.type_} meteor {meteor_id} '
               f'at time {t:.2f} for {info.score} points!')
         # TODO: expect spawns
@@ -194,7 +205,9 @@ class Tracker:
     def on_miss(self, meteor_id: str) -> None:
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
-        total_score = info.score  # TODO: compute potential score from spawns
+        total_score = self.constants.potential_score(meteor.type_)
+        self.lost_score += total_score
+        self.miss_stats[meteor.type_] += 1
         print(f'[MISS] {meteor.type_} meteor {meteor_id} got away! '
               f'Worth {info.score} points ({total_score} total)')
         del self.meteors[meteor_id]
@@ -202,3 +215,33 @@ class Tracker:
     def on_wiffed(self, rocket_id: str) -> None:
         print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
         del self.rockets[rocket_id]
+        self.wiffs += 1
+
+    def print_stats(self) -> None:
+        potential = self.score + self.lost_score
+        print(f'Final score:\t\t{self.score} points')
+        print(f'Theoretical max:\t{potential} points')
+        print(f'  ({self.score/potential*100:.1f}% points efficient)')
+        print()
+        if self.broken_invariants == 0:
+            print('No invariants were broken during the game.')
+        else:
+            print(f'[!!!] {self.broken_invariants} INVARIANTS BROKEN [!!!]')
+        print()
+        if self.wiffs == 0:
+            print('All shots hit.')
+        else:
+            print(f'[!!!] {self.wiffs} SHOT(S) MISSED [!!!]')
+        print()
+        print('Hit & passed-through breakdown')
+        total_hits = sum(self.hit_stats.values())
+        total_misses = sum(self.miss_stats.values())
+        pct = total_hits / (total_hits + total_misses) * 100
+        print(f'All: {total_hits}/{total_hits + total_misses} ({pct:.1f}%)')
+        for type_ in MeteorType:
+            hits, miss = self.hit_stats[type_], self.miss_stats[type_]
+            pct = hits / (hits + miss) * 100
+            miss_potential = miss * self.constants.potential_score(type_)
+            print(f'- {type_}: {hits}/{hits + miss} ({pct:.1f}%) -- '
+                  f'{miss_potential} points\' worth')
+        print()

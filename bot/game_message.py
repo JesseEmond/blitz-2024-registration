@@ -151,7 +151,7 @@ class Constants:
     def potential_score(self, meteor: MeteorType) -> float:
         info = self.meteorInfos[meteor]
         return info.score + sum(
-            self.potential_score(e.meteorType) for e in info.explodeInto)
+            self.potential_score(e.meteorType) for e in info.explodesInto)
 
 @dataclass
 class WorldConstants:

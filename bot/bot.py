@@ -159,3 +159,7 @@ class Bot:
             break  # Successful target found. Stop looping.
 
         return actions
+
+    def on_close(self):
+        print('Game done! Summary...')
+        self.tracker.print_stats()
