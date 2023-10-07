@@ -11,11 +11,12 @@ import physics
 @dataclasses.dataclass
 class MeteorInfo(Body):
     type_: MeteorType
+    targeted_by: Optional[str]
 
 
 @dataclasses.dataclass
 class RocketInfo(Body):
-    pass
+    target: Optional[str]
 
 
 @dataclasses.dataclass
@@ -40,14 +41,18 @@ class Tracker:
 
     def __init__(self, debug_mode: bool):
         self.debug_mode = debug_mode
+        self.pedantic_mode = False  # Use when debugging
 
         self.meteors = {}  # ID to MeteorInfo
         self.rockets = {}  # ID to RocketInfo
+        self.next_rocket_target = None
 
         self.score = 0
         self.lost_score = 0
         self.broken_invariants = 0
+        self.broken_pedantic_invariants = 0
         self.wiffs = 0
+        self.wrong_target = 0
         self.hit_stats = {}
         self.miss_stats = {}
 
@@ -74,11 +79,11 @@ class Tracker:
                   f'{game.score + self.lost_score} potential)')
             if changes.just_shot:
                 print('PEW!')
+        self.detect_new_rockets(game.rockets, changes)
 
         self.detect_meteor_hits(game.tick, game.cannon, changes)
         self.detect_missed_meteors(changes)
         self.detect_meteor_spawns(game.meteors, changes)
-        self.detect_new_rockets(game.rockets, changes)
 
         self.track_positions(game.meteors, game.rockets)
         if not self._expect(self.score == game.score,
@@ -94,7 +99,11 @@ class Tracker:
             vel = cannon_dir.scale(self.constants.rockets.speed)
             self.rockets['instant'] = RocketInfo(
                 position=cannon.position, velocity=vel,
-                size=self.constants.rockets.size)
+                size=self.constants.rockets.size,
+                target=self.next_rocket_target)
+            self._expect(self.next_rocket_target is not None,
+                f'Instant kill did not have a target.')
+            self.next_rocket_target = None
             changes.lost_rockets.add('instant')
         for rocket in changes.lost_rockets:
             self._check_rocket_hit(tick, rocket, changes.lost_meteors)
@@ -110,18 +119,31 @@ class Tracker:
     def detect_meteor_spawns(
         self, meteors: List[Meteor], changes: Changes) -> None:
         for meteor in (m for m in meteors if m.id in changes.new_meteors):
-            print(f'[TMP] New {meteor.meteorType} meteor {meteor.id} spawned!')
             # TODO: detect explosion vs. new meteor
+            print(f'[TMP] New {meteor.meteorType} meteor {meteor.id} spawned!')
             self.meteors[meteor.id] = MeteorInfo(
                 position=meteor.position, velocity=meteor.velocity,
-                size=meteor.size, type_=meteor.meteorType)
+                size=meteor.size, type_=meteor.meteorType,
+                targeted_by=None)
 
     def detect_new_rockets(
         self, rockets: List[Projectile], changes: Changes) -> None:
-        for rocket in (r for r in rockets if r.id in changes.new_rockets):
-            self.rockets[rocket.id] = RocketInfo(
-                position=rocket.position, velocity=rocket.velocity,
-                size=rocket.size)
+        if not changes.new_rockets:
+            return
+        self._expect(len(changes.new_rockets) == 1,
+            f'Many new rockets: {changes.new_rockets}')
+        new_rocket_id = next(iter(changes.new_rockets))
+        rocket = next(r for r in rockets if r.id == new_rocket_id)
+        meteor_id = self.next_rocket_target
+        self.rockets[new_rocket_id] = RocketInfo(
+            position=rocket.position, velocity=rocket.velocity,
+            size=rocket.size, target=meteor_id)
+        if not self._expect(meteor_id is not None,
+                            f'No target assigned to rocket: {rocket}'):
+            return
+        self.meteors[meteor_id].targeted_by = new_rocket_id
+        print(f'(aim) rocket {new_rocket_id} to meteor {meteor_id}')
+        self.next_rocket_target = None
 
     def track_positions(self,
         meteors: List[Meteor], rockets: List[Projectile]) -> None:
@@ -130,7 +152,8 @@ class Tracker:
         for rocket in rockets:
             self.rockets[rocket.id].position = rocket.position
 
-    def _expect(self, true: bool, fail_msg: str) -> bool:
+    def _expect(self, true: bool, fail_msg: str,
+                pedantic: bool = False) -> bool:
         game = self._debug_game
         if not true:
             print(f'[EXPECTATION failure]: {fail_msg}')
@@ -140,8 +163,11 @@ class Tracker:
             print()
             print('Current tick:')
             game._debug_print()
-            self.broken_invariants += 1
-        if self.debug_mode:
+            if pedantic:
+                self.broken_pedantic_invariants += 1
+            else:
+                self.broken_invariants += 1
+        if self.debug_mode and (not pedantic or self.pedantic_mode):
             assert true, fail_msg
         return true
 
@@ -192,12 +218,29 @@ class Tracker:
             self.on_wiffed(rocket_id)
 
     def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> None:
+        rocket = self.rockets[rocket_id]
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
         self.score += info.score
         self.hit_stats[meteor.type_] += 1
+        if rocket.target != meteor_id:
+            self.wrong_target += 1
         print(f'[HIT] Rocket {rocket_id} hit {meteor.type_} meteor {meteor_id} '
               f'at time {t:.2f} for {info.score} points!')
+        # TODO: remove pedantic once we detect these in candidate selection
+        if not self._expect(rocket.target == meteor_id,
+            f'Rocket was targeting {rocket.target}', pedantic=True):
+            self._expect(self.meteors[rocket.target].targeted_by == rocket_id,
+                         f'Meteor {rocket.target} was not linked correctly.')
+            self.meteors[rocket.target].targeted_by = None
+        if not self._expect(meteor.targeted_by == rocket_id,
+            f'Meteor was being targeted by {meteor.targeted_by}',
+            pedantic=True):
+            if meteor.targeted_by is not None:
+                self._expect(
+                    self.rockets[meteor.targeted_by].target == meteor_id,
+                    f'Rocket {meteor.targeted_by} was not linked correctly.')
+                self.rockets[meteor.targeted_by].target = None
         # TODO: expect spawns
         del self.rockets[rocket_id]
         del self.meteors[meteor_id]
@@ -217,6 +260,12 @@ class Tracker:
         del self.rockets[rocket_id]
         self.wiffs += 1
 
+    def is_targeted(self, meteor_id: str) -> bool:
+        return self.meteors[meteor_id].targeted_by is not None
+
+    def assign_target(self, meteor_id: str) -> bool:
+        self.next_rocket_target = meteor_id
+
     def print_stats(self) -> None:
         potential = self.score + self.lost_score
         print(f'Final score:\t\t{self.score} points')
@@ -227,12 +276,12 @@ class Tracker:
             print('No invariants were broken during the game.')
         else:
             print(f'[!!!] {self.broken_invariants} INVARIANTS BROKEN [!!!]')
+        print(f'{self.broken_pedantic_invariants} peantic invariants broken.')
         print()
         if self.wiffs == 0:
             print('All shots hit.')
         else:
             print(f'[!!!] {self.wiffs} SHOT(S) MISSED [!!!]')
-        print()
         print('Hit & passed-through breakdown')
         total_hits = sum(self.hit_stats.values())
         total_misses = sum(self.miss_stats.values())
@@ -245,3 +294,4 @@ class Tracker:
             print(f'- {type_}: {hits}/{hits + miss} ({pct:.1f}%) -- '
                   f'{miss_potential} points\' worth')
         print()
+        print(f'Wrong target hits: {self.wrong_target}')

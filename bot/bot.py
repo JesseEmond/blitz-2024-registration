@@ -16,25 +16,15 @@ class Bot:
         self.constants = None
         self.bounds = None
         self.tracker = tracker.Tracker(self.debug_mode)
-        # TODO: We might miss our target (e.g. hit something else) -- handle.
-        # TODO: Clean up hit list when meteors are destroyed/gone
-        self.hit_list = set()
         # TODO: detect when expected explosions spawn, remove from this list
         self.expected_explosions = {}
         self.next_explosion_id = 0
 
     def get_candidates(self, meteors: List[Meteor]) -> List[Meteor]:
         targets = [target for target in meteors
-                   if target.id not in self.hit_list]
+                   if not self.tracker.is_targeted(target.id)]
         # TODO: Take into accounts meteors that will spawn
         return targets
-
-    def expect(self, value: bool, msg: str) -> bool:
-        if self.debug_mode:
-            assert value, msg
-        elif not value:
-            print(f'[EXPECTATION failure]: {msg}')
-        return value
 
     def rank_candidates(self, cannon: Cannon, candidates: List[Meteor]):
         # TODO: avoid shooting large/medium meteors that will spawn meteors too
@@ -150,7 +140,7 @@ class Bot:
 
             if not game.cannon.cooldown:
                 self.info(f'Shooting! Marking {target.id} on our hit-list.')
-                self.hit_list.add(target.id)
+                self.tracker.assign_target(target.id)
                 actions.append(ShootAction())
                 # TODO: requires more work.
                 # self.expect_explosion(target, collision.target)
