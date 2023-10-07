@@ -67,56 +67,45 @@ def solve_quadratic(a: float, b: float, c: float) -> QuadraticSolution:
     return p - q, p + q
 
 
-def bullet_target_collision_times(
-    source: Vector, target: Body, bullet_speed: float) -> QuadraticSolution:
-    """Times for 'source' to reach a moving 'target' with a bullet."""
+def rocket_target_collision_times(
+    source: Vector, target: Body, rocket_speed: float) -> QuadraticSolution:
+    """Times for 'source' to reach a moving 'target' with a rocket."""
     # https://gamedev.stackexchange.com/q/25277
     delta_pos = target.position.minus(source)
-    a = target.velocity.dot(target.velocity) - bullet_speed * bullet_speed
+    a = target.velocity.dot(target.velocity) - rocket_speed * rocket_speed
     b = 2 * target.velocity.dot(delta_pos)
     c = delta_pos.dot(delta_pos)
     return solve_quadratic(a, b, c)
 
 
-def rewind_body_collision(
-    collision: CollisionInfo, source: Body, target: Body) -> None:
-    """Rewind center-based collision to when bodies first intersect."""
-    r = source.size + target.size
-    a = source.velocity.len_sq() + target.velocity.len_sq()
-    b = -2 * source.velocity.inv().dot(target.velocity.inv())
-    c = -r * r
-    ts = solve_quadratic(a, b, c)
-    assert ts, (a, b, c, cannon, target, constants, collision_time)
-    dt = max(ts)
-    # TODO: validate that predicted times match with tracker
-    # Rewind to when the spheres first intersect.
-    collision.delta_t -= dt
-    # Fast-forward to the collision point
-    source_pos = source.position.add(source.velocity.scale(collision.delta_t))
-    target_pos = target.position.add(target.velocity.scale(collision.delta_t))
-    delta = target_pos.minus(source_pos).normalized()
-    collision.target_collision_point = source_pos.add(delta.scale(source.size))
-
-
 def aim_at_moving_target(
-    source: Vector, bullet_size: float, bullet_speed: float,
+    source: Vector, rocket_size: float, rocket_speed: float,
     target: Body) -> Optional[CollisionInfo]:
     """Aim body towards moving body."""
     # TODO: Can we hit targets slightly faster by taking into account the
     # two sphere radii from the get-go? Can try numeric methods for now...
-    times = bullet_target_collision_times(source, target, bullet_speed)
+    times = rocket_target_collision_times(source, target, rocket_speed)
     earliest = None
     for t in times:
         collision_point = target.position.add(target.velocity.scale(t))
         collision = CollisionInfo(
             target=collision_point, delta_t=t, center_collision_t=t,
             target_collision_point=None)
-        bullet_dir = collision_point.minus(source).normalized()
-        bullet = Body(position=source,
-            velocity=bullet_dir.scale(bullet_speed), size=bullet_size)
-        rewind_body_collision(collision, bullet, target)
+        rocket_dir = collision_point.minus(source).normalized()
+        rocket = Body(position=source,
+            velocity=rocket_dir.scale(rocket_speed), size=rocket_size)
+        t = next_collision_time(rocket, target)  # Find sphere collision time
+        if not t:
+            continue
+        collision.delta_t = t
         if collision.delta_t < 0:
             continue
+        # Fast-forward to the collision point
+        source_end = rocket.advance(collision.delta_t)
+        target_end = target.advance(collision.delta_t)
+        delta = target_end.position.minus(source_end.position).normalized()
+        collision.target_collision_point = source_end.position.add(
+            delta.scale(rocket_size))
         if not earliest or collision.delta_t < earliest.delta_t:
             earliest = collision
     return earliest

@@ -55,7 +55,8 @@ class Vector:
        return Vector(math.cos(angle), math.sin(angle))
 
    def normalized(self) -> 'Vector':
-       return self.scale(1 / self.len())
+       l = self.len()
+       return self.scale((1 / l) if l != 0 else 0)
 
    def dist_sq(self, other: 'Vector') -> float:
        return self.minus(other).len_sq()
