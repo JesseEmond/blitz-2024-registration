@@ -89,7 +89,8 @@ class Tracker:
         for rocket in changes.lost_rockets:
             self._check_rocket_hit(tick, rocket, changes.lost_meteors)
         if not self._expect('instant' not in self.rockets,
-            f'Insta kill, but no hits found: meteors: {changes.lost_meteors}'):
+            (f'Insta kill, but no hits found: meteors: {changes.lost_meteors} '
+             f'Rocket: {self.rockets.get("instant")}')):
             del self.rockets['instant']  # Shouldn't happen, but cleaning up
 
     def detect_missed_meteors(self, changes: Changes) -> None:
@@ -177,7 +178,7 @@ class Tracker:
             self.on_hit(rocket_id, hit_meteor, previous_tick + hit_time)
             meteors.remove(hit_meteor)
         else:
-            self.on_wiffed(rocket)
+            self.on_wiffed(rocket_id)
 
     def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> None:
         meteor = self.meteors[meteor_id]
@@ -198,6 +199,5 @@ class Tracker:
         del self.meteors[meteor_id]
 
     def on_wiffed(self, rocket_id: str) -> None:
-        """Rocket didn't hit anything! How embarassing!"""
         print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
         del self.rockets[rocket_id]

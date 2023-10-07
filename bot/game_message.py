@@ -37,7 +37,8 @@ class GameMessage:
         just_shot = ' (Just shot!)' if self.just_shot() else ''
         print(f'Cannon is at {self.cannon.position.pprint()} '
               f'(cooldown: {self.cannon.cooldown}/'
-              f'{self.constants.cannonCooldownTicks}){just_shot}')
+              f'{self.constants.cannonCooldownTicks}){just_shot}, '
+              f'angle: {self.cannon.orientation:7.2f}°')
         world = self.constants.world
         print(f'World is {world.width}x{world.height}')
 
