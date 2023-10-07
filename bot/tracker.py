@@ -9,6 +9,12 @@ import physics
 
 
 @dataclasses.dataclass
+class Target:
+    id_: str
+    hit_time: float
+
+
+@dataclasses.dataclass
 class MeteorInfo(Body):
     type_: MeteorType
     targeted_by: Optional[str]
@@ -16,7 +22,7 @@ class MeteorInfo(Body):
 
 @dataclasses.dataclass
 class RocketInfo(Body):
-    target: Optional[str]
+    target: Optional[Target]
 
 
 @dataclasses.dataclass
@@ -55,6 +61,7 @@ class Tracker:
         self.wrong_target = 0
         self.hit_stats = {}
         self.miss_stats = {}
+        self.hit_time_deltas = []
 
         # Set on first tick.
         self.constants = None
@@ -101,7 +108,7 @@ class Tracker:
                 position=cannon.position, velocity=vel,
                 size=self.constants.rockets.size,
                 target=self.next_rocket_target)
-            self._expect(self.next_rocket_target is not None,
+            self._expect(self.next_rocket_target,
                 f'Instant kill did not have a target.')
             self.next_rocket_target = None
             changes.lost_rockets.add('instant')
@@ -134,15 +141,14 @@ class Tracker:
             f'Many new rockets: {changes.new_rockets}')
         new_rocket_id = next(iter(changes.new_rockets))
         rocket = next(r for r in rockets if r.id == new_rocket_id)
-        meteor_id = self.next_rocket_target
+        target = self.next_rocket_target
         self.rockets[new_rocket_id] = RocketInfo(
             position=rocket.position, velocity=rocket.velocity,
-            size=rocket.size, target=meteor_id)
-        if not self._expect(meteor_id is not None,
-                            f'No target assigned to rocket: {rocket}'):
+            size=rocket.size, target=target)
+        if not self._expect(target, f'No target assigned to rocket: {rocket}'):
             return
-        self.meteors[meteor_id].targeted_by = new_rocket_id
-        print(f'(aim) rocket {new_rocket_id} to meteor {meteor_id}')
+        self.meteors[target.id_].targeted_by = new_rocket_id
+        print(f'(aim) rocket {new_rocket_id} to meteor {target.id_}')
         self.next_rocket_target = None
 
     def track_positions(self,
@@ -200,7 +206,7 @@ class Tracker:
             t = physics.next_collision_time(rocket, meteor)
             if t is None:
                 continue
-            if (self.bounds.is_out(meteor.advance(t)) or
+            if (self.bounds.is_out(meteor.advance(t)) and
                 self.bounds.is_out(rocket.advance(t))):
                 continue
             if hit_meteor is None or t < hit_time:
@@ -223,22 +229,27 @@ class Tracker:
         info = self.constants.meteorInfos[meteor.type_]
         self.score += info.score
         self.hit_stats[meteor.type_] += 1
-        if rocket.target != meteor_id:
+        if not rocket.target or rocket.target.id_ != meteor_id:
             self.wrong_target += 1
         print(f'[HIT] Rocket {rocket_id} hit {meteor.type_} meteor {meteor_id} '
               f'at time {t:.2f} for {info.score} points!')
+        if rocket.target and rocket.target.id_ == meteor_id:
+            self.hit_time_deltas.append(t - rocket.target.hit_time)
         # TODO: remove pedantic once we detect these in candidate selection
-        if not self._expect(rocket.target == meteor_id,
+        if not self._expect(rocket.target and rocket.target.id_ == meteor_id,
             f'Rocket was targeting {rocket.target}', pedantic=True):
-            self._expect(self.meteors[rocket.target].targeted_by == rocket_id,
-                         f'Meteor {rocket.target} was not linked correctly.')
-            self.meteors[rocket.target].targeted_by = None
+            if rocket.target:
+                self._expect(
+                    self.meteors[rocket.target.id_].targeted_by == rocket_id,
+                    f'Meteor {rocket.target.id_} was not linked correctly.')
+                self.meteors[rocket.target.id_].targeted_by = None
         if not self._expect(meteor.targeted_by == rocket_id,
             f'Meteor was being targeted by {meteor.targeted_by}',
             pedantic=True):
             if meteor.targeted_by is not None:
                 self._expect(
-                    self.rockets[meteor.targeted_by].target == meteor_id,
+                    (self.rockets[meteor.targeted_by].target and
+                     self.rockets[meteor.targeted_by].target.id_ == meteor_id),
                     f'Rocket {meteor.targeted_by} was not linked correctly.')
                 self.rockets[meteor.targeted_by].target = None
         # TODO: expect spawns
@@ -263,8 +274,8 @@ class Tracker:
     def is_targeted(self, meteor_id: str) -> bool:
         return self.meteors[meteor_id].targeted_by is not None
 
-    def assign_target(self, meteor_id: str) -> bool:
-        self.next_rocket_target = meteor_id
+    def assign_target(self, meteor_id: str, hit_time: float) -> None:
+        self.next_rocket_target = Target(meteor_id, hit_time)
 
     def print_stats(self) -> None:
         potential = self.score + self.lost_score
@@ -295,3 +306,8 @@ class Tracker:
                   f'{miss_potential} points\' worth')
         print()
         print(f'Wrong target hits: {self.wrong_target}')
+        print()
+        print('Hit time predictions for right targets')
+        print(f'Min: {min(self.hit_time_deltas)}')
+        print(f'Max: {max(self.hit_time_deltas)}')
+        print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas)}')

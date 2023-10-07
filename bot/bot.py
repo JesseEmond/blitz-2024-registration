@@ -131,16 +131,15 @@ class Bot:
             if not self.can_reach_target(game.cannon, collision.target):
                 self.info('Can not reach aim (off-screen/past us).')
                 continue
-            if game.tick + collision.delta_t >= TOTAL_TICKS:
+            hit_time = game.tick + collision.delta_t
+            if hit_time >= TOTAL_TICKS:
                 self.info(f'Can not reach target in time: {game.tick + collision.delta_t}')
                 continue
-            # TODO: log with tracker & verify
-            # print(f'Predicting collision. {collision}')
             actions.append(LookAtAction(target=collision.target))
 
             if not game.cannon.cooldown:
                 self.info(f'Shooting! Marking {target.id} on our hit-list.')
-                self.tracker.assign_target(target.id)
+                self.tracker.assign_target(target.id, hit_time)
                 actions.append(ShootAction())
                 # TODO: requires more work.
                 # self.expect_explosion(target, collision.target)
