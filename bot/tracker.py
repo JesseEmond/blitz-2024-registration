@@ -86,6 +86,7 @@ class Tracker:
             self.rockets['instant'] = RocketInfo(
                 position=cannon.position, velocity=vel,
                 size=self.constants.rockets.size)
+            changes.lost_rockets.add('instant')
         for rocket in changes.lost_rockets:
             self._check_rocket_hit(tick, rocket, changes.lost_meteors)
         if not self._expect('instant' not in self.rockets,

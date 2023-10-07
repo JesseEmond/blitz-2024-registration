@@ -127,6 +127,8 @@ def next_collision_time(p: Body, q: Body) -> Optional[float]:
     # ||(p.pos + t p.vel) - (q.pos + t q.vel)|| = p.size + q.size
     # ... https://stackoverflow.com/a/50722146
     r = p.size + q.size
+    if p.position.in_range(q.position, r):
+        return 0  # Already colliding!
     a = (p.velocity.len_sq() + q.velocity.len_sq()
          - 2 * p.velocity.dot(q.velocity))
     b = 2 * (p.position.dot(p.velocity) + q.position.dot(q.velocity)

@@ -148,6 +148,10 @@ class Constants:
     cannonCooldownTicks: int
     meteorInfos: Dict[MeteorType, MeteorInfos]
 
+    def potential_score(self, meteor: MeteorType) -> float:
+        info = self.meteorInfos[meteor]
+        return info.score + sum(
+            self.potential_score(e.meteorType) for e in info.explodeInto)
 
 @dataclass
 class WorldConstants:
