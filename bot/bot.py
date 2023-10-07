@@ -7,6 +7,7 @@ from actions import *
 
 import game_events
 import physics
+import stats
 
 
 class Bot:
@@ -16,6 +17,10 @@ class Bot:
         self.constants = None
         self.bounds = None
         self.events = game_events.GameEvents(self.debug_mode)
+        self.stats = stats.Stats()
+
+        self.events.add_listener(self.stats.callbacks())
+
         # TODO: detect when expected explosions spawn, remove from this list
         self.expected_explosions = {}
         self.next_explosion_id = 0
@@ -158,4 +163,4 @@ class Bot:
 
     def on_close(self):
         print('Game done! Summary...')
-        self.events.print_stats()
+        self.stats.print_stats()

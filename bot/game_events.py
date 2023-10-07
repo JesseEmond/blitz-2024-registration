@@ -1,5 +1,4 @@
 """Keep track of the state of the game and various statistics."""
-# TODO: move stats tracking outside
 # TODO: move target assignment out (anything else to keep 'gameevents' clean?)
 import dataclasses
 import math
@@ -11,13 +10,21 @@ import physics
 
 
 @dataclasses.dataclass
-class Listener:
+class ListenerCallbacks:
+    # on_first_tick(game_events, constants, bounds)
+    on_first_tick: Optional[
+        Callable[['GameEvents', Constants, physics.Bounds], None]] = None
+    # on_before_events(game_events, game_message, changes)
+    on_before_events: Optional[
+        Callable[['GameEvents', GameMessage, 'Changes'], None]] = None
     # on_hit(game_events, rocket_id, meteor_id, collision_time)
     on_hit: Optional[Callable[['GameEvents', str, str, float], None]] = None
     # on_miss(game_events, meteor_id)
     on_miss: Optional[Callable[['GameEvents', str], None]] = None
-    # on_wiffed(game_events, rocket_id)
-    on_wiffed: Optional[Callable[['GameEvents', str], None]] = None
+    # on_wiff(game_events, rocket_id)
+    on_wiff: Optional[Callable[['GameEvents', str], None]] = None
+    # on_expect_fail(game_events, fail_msg, pedantic)
+    on_expect_fail: Optional[Callable[['GameEvents', str, bool], None]] = None
 
 
 @dataclasses.dataclass
@@ -66,14 +73,10 @@ class GameEvents:
         self.next_rocket_target = None
         self.listeners = []
 
+        # Keep an estimated score, helps detect events-tracking bugs.
         self.score = 0
-        self.lost_score = 0
-        self.broken_invariants = 0
-        self.broken_pedantic_invariants = 0
-        self.wiffs = 0
+        # TODO: move to stats
         self.wrong_target = 0
-        self.hit_stats = {}
-        self.miss_stats = {}
         self.hit_time_deltas = []
 
         # Set on first tick.
@@ -84,24 +87,23 @@ class GameEvents:
         self._debug_game = None
         self._debug_previous_game = None
 
-    def add_listener(self, listener: Listener) -> None:
-        self.listeners.append(listener)
+    def add_listener(self, callbacks: ListenerCallbacks) -> None:
+        self.listeners.append(callbacks)
 
     def first_tick(self, constants: Constants, bounds: physics.Bounds) -> None:
         self.constants = constants
         self.bounds = bounds
-        self.hit_stats = {type_: 0 for type_ in MeteorType}
-        self.miss_stats = {type_: 0 for type_ in MeteorType}
+        for listener in self.listeners:
+            if listener.on_first_tick:
+                listener.on_first_tick(self, constants, bounds)
 
     def update(self, game: GameMessage) -> None:
         self._debug_game = game
 
         changes = self.detect_changes(game)
-        if changes.any_change():
-            print(f'Tick: {game.tick} (game score: {game.score} / '
-                  f'{game.score + self.lost_score} potential)')
-            if changes.just_shot:
-                print('PEW!')
+        for listener in self.listeners:
+            if listener.on_before_events:
+                listener.on_before_events(self, game, changes)
         self.detect_new_rockets(game.rockets, changes)
 
         self.detect_meteor_hits(game.tick, game.cannon, changes)
@@ -131,7 +133,7 @@ class GameEvents:
         for rocket in changes.lost_rockets:
             self._check_rocket_hit(tick, rocket, changes.lost_meteors)
         if not self._expect('instant' not in self.rockets,
-            (f'Insta kill, but no hits found: meteors: {changes.lost_meteors} '
+            (f'Insta kill, but no hits found. Meteors: {changes.lost_meteors} '
              f'Rocket: {self.rockets.get("instant")}')):
             del self.rockets['instant']  # Shouldn't happen, but cleaning up
 
@@ -143,6 +145,7 @@ class GameEvents:
         self, meteors: List[Meteor], changes: Changes) -> None:
         for meteor in (m for m in meteors if m.id in changes.new_meteors):
             # TODO: detect explosion vs. new meteor
+            # TODO: move this print to stats
             print(f'[TMP] New {meteor.meteorType} meteor {meteor.id} spawned!')
             self.meteors[meteor.id] = MeteorInfo(
                 position=meteor.position, velocity=meteor.velocity,
@@ -164,6 +167,7 @@ class GameEvents:
         if not self._expect(target, f'No target assigned to rocket: {rocket}'):
             return
         self.meteors[target.id_].targeted_by = new_rocket_id
+        # TODO: move this print to target picker
         print(f'(aim) rocket {new_rocket_id} to meteor {target.id_}')
         self.next_rocket_target = None
 
@@ -185,10 +189,9 @@ class GameEvents:
             print()
             print('Current tick:')
             game._debug_print()
-            if pedantic:
-                self.broken_pedantic_invariants += 1
-            else:
-                self.broken_invariants += 1
+            for listener in self.listeners:
+                if listener.on_expect_fail:
+                    listener.on_expect_fail(self, fail_msg, pedantic)
         if self.debug_mode and (not pedantic or self.pedantic_mode):
             assert true, fail_msg
         return true
@@ -237,7 +240,7 @@ class GameEvents:
             self.on_hit(rocket_id, hit_meteor, previous_tick + hit_time)
             meteors.remove(hit_meteor)
         else:
-            self.on_wiffed(rocket_id)
+            self.on_wiff(rocket_id)
 
     def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> None:
         for listener in self.listeners:
@@ -247,11 +250,9 @@ class GameEvents:
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
         self.score += info.score
-        self.hit_stats[meteor.type_] += 1
+        # TODO: move target tracking to its own class
         if not rocket.target or rocket.target.id_ != meteor_id:
             self.wrong_target += 1
-        print(f'[HIT] Rocket {rocket_id} hit {meteor.type_} meteor {meteor_id} '
-              f'at time {t:.2f} for {info.score} points!')
         if rocket.target and rocket.target.id_ == meteor_id:
             self.hit_time_deltas.append(t - rocket.target.hit_time)
         # TODO: remove pedantic once we detect these in candidate selection
@@ -279,60 +280,16 @@ class GameEvents:
         for listener in self.listeners:
             if listener.on_miss:
                 listener.on_miss(self, meteor_id)
-        meteor = self.meteors[meteor_id]
-        info = self.constants.meteorInfos[meteor.type_]
-        total_score = self.constants.potential_score(meteor.type_)
-        self.lost_score += total_score
-        self.miss_stats[meteor.type_] += 1
-        print(f'[MISS] {meteor.type_} meteor {meteor_id} got away! '
-              f'Worth {info.score} points ({total_score} total)')
         del self.meteors[meteor_id]
 
-    def on_wiffed(self, rocket_id: str) -> None:
+    def on_wiff(self, rocket_id: str) -> None:
         for listener in self.listeners:
             if listener.on_wiff:
                 listener.on_wiff(self, rocket_id)
-        print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
         del self.rockets[rocket_id]
-        self.wiffs += 1
 
     def is_targeted(self, meteor_id: str) -> bool:
         return self.meteors[meteor_id].targeted_by is not None
 
     def assign_target(self, meteor_id: str, hit_time: float) -> None:
         self.next_rocket_target = Target(meteor_id, hit_time)
-
-    def print_stats(self) -> None:
-        potential = self.score + self.lost_score
-        print(f'Final score:\t\t{self.score} points')
-        print(f'Theoretical max:\t{potential} points')
-        print(f'  ({self.score/potential*100:.1f}% points efficient)')
-        print()
-        if self.broken_invariants == 0:
-            print('No invariants were broken during the game.')
-        else:
-            print(f'[!!!] {self.broken_invariants} INVARIANTS BROKEN [!!!]')
-        print(f'{self.broken_pedantic_invariants} pedantic invariants broken.')
-        print()
-        if self.wiffs == 0:
-            print('All shots hit.')
-        else:
-            print(f'[!!!] {self.wiffs} SHOT(S) MISSED [!!!]')
-        print('Hit & passed-through breakdown')
-        total_hits = sum(self.hit_stats.values())
-        total_misses = sum(self.miss_stats.values())
-        pct = total_hits / (total_hits + total_misses) * 100
-        print(f'All: {total_hits}/{total_hits + total_misses} ({pct:.1f}%)')
-        for type_ in MeteorType:
-            hits, miss = self.hit_stats[type_], self.miss_stats[type_]
-            pct = hits / (hits + miss) * 100
-            miss_potential = miss * self.constants.potential_score(type_)
-            print(f'- {type_}: {hits}/{hits + miss} ({pct:.1f}%) -- '
-                  f'{miss_potential} points\' worth')
-        print()
-        print(f'Wrong target hits: {self.wrong_target}')
-        print()
-        print('Hit time predictions for right targets')
-        print(f'Min: {min(self.hit_time_deltas)}')
-        print(f'Max: {max(self.hit_time_deltas)}')
-        print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas)}')
