@@ -244,7 +244,8 @@ class GameEvents:
             if rocket.target:
                 self.meteors[rocket.target.id_].targeted_by = None
         if not (meteor.targeted_by == rocket_id):
-            self.rockets[meteor.targeted_by].target = None
+            if meteor.targeted_by is not None:
+                self.rockets[meteor.targeted_by].target = None
         # if not self._expect(rocket.target and rocket.target.id_ == meteor_id,
         #     f'Rocket was targeting {rocket.target}', pedantic=True):
         #     if rocket.target:
