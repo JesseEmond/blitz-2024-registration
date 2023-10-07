@@ -14,17 +14,20 @@ class ListenerCallbacks:
     # on_first_tick(game_events, constants, bounds)
     on_first_tick: Optional[
         Callable[['GameEvents', Constants, physics.Bounds], None]] = None
+    # on_tick(game_events, game_message)
+    on_tick: Optional[Callable[['GameEvents', GameMessage], None]] = None
     # on_before_events(game_events, game_message, changes)
     on_before_events: Optional[
         Callable[['GameEvents', GameMessage, 'Changes'], None]] = None
+    # on_after_events(game_events, game_message)
+    on_after_events: Optional[
+        Callable[['GameEvents', GameMessage], None]] = None
     # on_hit(game_events, rocket_id, meteor_id, collision_time)
     on_hit: Optional[Callable[['GameEvents', str, str, float], None]] = None
     # on_miss(game_events, meteor_id)
     on_miss: Optional[Callable[['GameEvents', str], None]] = None
     # on_wiff(game_events, rocket_id)
     on_wiff: Optional[Callable[['GameEvents', str], None]] = None
-    # on_expect_fail(game_events, fail_msg, pedantic)
-    on_expect_fail: Optional[Callable[['GameEvents', str, bool], None]] = None
 
 
 @dataclasses.dataclass
@@ -64,17 +67,12 @@ class Changes:
 class GameEvents:
     """Track source and statuses of rockets and meteors, detect events."""
 
-    def __init__(self, debug_mode: bool):
-        self.debug_mode = debug_mode
-        self.pedantic_mode = False  # Use when debugging
-
+    def __init__(self):
         self.meteors = {}  # ID to MeteorInfo
         self.rockets = {}  # ID to RocketInfo
         self.next_rocket_target = None
         self.listeners = []
 
-        # Keep an estimated score, helps detect events-tracking bugs.
-        self.score = 0
         # TODO: move to stats
         self.wrong_target = 0
         self.hit_time_deltas = []
@@ -82,10 +80,6 @@ class GameEvents:
         # Set on first tick.
         self.constants = None
         self.bounds = None
-
-        # Set on every 'update', used for global access when debug-printing
-        self._debug_game = None
-        self._debug_previous_game = None
 
     def add_listener(self, callbacks: ListenerCallbacks) -> None:
         self.listeners.append(callbacks)
@@ -98,7 +92,9 @@ class GameEvents:
                 listener.on_first_tick(self, constants, bounds)
 
     def update(self, game: GameMessage) -> None:
-        self._debug_game = game
+        for listener in self.listeners:
+            if listener.on_tick:
+                listener.on_tick(self, game)
 
         changes = self.detect_changes(game)
         for listener in self.listeners:
@@ -111,10 +107,9 @@ class GameEvents:
         self.detect_meteor_spawns(game.meteors, changes)
 
         self.track_positions(game.meteors, game.rockets)
-        if not self._expect(self.score == game.score,
-            f'Predicted score {self.score}, but game has {game.score}'):
-            self.score = game.score  # Adjust, otherwise we'll keep spamming.
-        self._debug_previous_game = game
+        for listener in self.listeners:
+            if listener.on_after_events:
+                listener.on_after_events(self, game)
 
     def detect_meteor_hits(self,
         tick: float, cannon: Cannon, changes: Changes) -> None:
@@ -126,16 +121,20 @@ class GameEvents:
                 position=cannon.position, velocity=vel,
                 size=self.constants.rockets.size,
                 target=self.next_rocket_target)
-            self._expect(self.next_rocket_target,
-                f'Instant kill did not have a target.')
+            # TODO: move to target picker
+            # self._expect(self.next_rocket_target,
+            #     f'Instant kill did not have a target.')
             self.next_rocket_target = None
             changes.lost_rockets.add('instant')
         for rocket in changes.lost_rockets:
             self._check_rocket_hit(tick, rocket, changes.lost_meteors)
-        if not self._expect('instant' not in self.rockets,
-            (f'Insta kill, but no hits found. Meteors: {changes.lost_meteors} '
-             f'Rocket: {self.rockets.get("instant")}')):
-            del self.rockets['instant']  # Shouldn't happen, but cleaning up
+        # TODO: move to target picker
+        if 'instant' in self.rockets:
+            del self.rockets['instant']
+        # if not self._expect('instant' not in self.rockets,
+        #     (f'Insta kill, but no hits found. Meteors: {changes.lost_meteors} '
+        #      f'Rocket: {self.rockets.get("instant")}')):
+        #     del self.rockets['instant']  # Shouldn't happen, but cleaning up
 
     def detect_missed_meteors(self, changes: Changes) -> None:
         for meteor in changes.lost_meteors:
@@ -156,16 +155,18 @@ class GameEvents:
         self, rockets: List[Projectile], changes: Changes) -> None:
         if not changes.new_rockets:
             return
-        self._expect(len(changes.new_rockets) == 1,
-            f'Many new rockets: {changes.new_rockets}')
+        assert len(changes.new_rockets) == 1, \
+            'Many new rockets: {changes.new_rockets}'
         new_rocket_id = next(iter(changes.new_rockets))
         rocket = next(r for r in rockets if r.id == new_rocket_id)
         target = self.next_rocket_target
         self.rockets[new_rocket_id] = RocketInfo(
             position=rocket.position, velocity=rocket.velocity,
             size=rocket.size, target=target)
-        if not self._expect(target, f'No target assigned to rocket: {rocket}'):
-            return
+        # TODO: move to target picker
+        if not target: return
+        # if not self._expect(target, f'No target assigned to rocket: {rocket}'):
+        #     return
         self.meteors[target.id_].targeted_by = new_rocket_id
         # TODO: move this print to target picker
         print(f'(aim) rocket {new_rocket_id} to meteor {target.id_}')
@@ -177,24 +178,6 @@ class GameEvents:
             self.meteors[meteor.id].position = meteor.position
         for rocket in rockets:
             self.rockets[rocket.id].position = rocket.position
-
-    def _expect(self, true: bool, fail_msg: str,
-                pedantic: bool = False) -> bool:
-        game = self._debug_game
-        if not true:
-            print(f'[EXPECTATION failure]: {fail_msg}')
-            print('Previous tick:')
-            if self._debug_previous_game:
-                self._debug_previous_game._debug_print()
-            print()
-            print('Current tick:')
-            game._debug_print()
-            for listener in self.listeners:
-                if listener.on_expect_fail:
-                    listener.on_expect_fail(self, fail_msg, pedantic)
-        if self.debug_mode and (not pedantic or self.pedantic_mode):
-            assert true, fail_msg
-        return true
 
     def detect_changes(self, game: GameMessage) -> Changes:
         new_meteors, lost_meteors = self._get_id_deltas(
@@ -233,10 +216,11 @@ class GameEvents:
                 hit_time = t
         if hit_meteor is not None:
             previous_tick = tick - 1
-            self._expect(
-                hit_time <= 1.0,
-                (f'Inferred rocket-meteor hit time would be after right now: '
-                 f'{hit_time}, {rocket}, {self.meteors[hit_meteor]}'))
+            # TODO: move to target picker on_hit
+            # self._expect(
+            #     hit_time <= 1.0,
+            #     (f'Inferred rocket-meteor hit time would be after right now: '
+            #      f'{hit_time}, {rocket}, {self.meteors[hit_meteor]}'))
             self.on_hit(rocket_id, hit_meteor, previous_tick + hit_time)
             meteors.remove(hit_meteor)
         else:
@@ -249,29 +233,33 @@ class GameEvents:
         rocket = self.rockets[rocket_id]
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
-        self.score += info.score
         # TODO: move target tracking to its own class
         if not rocket.target or rocket.target.id_ != meteor_id:
             self.wrong_target += 1
         if rocket.target and rocket.target.id_ == meteor_id:
             self.hit_time_deltas.append(t - rocket.target.hit_time)
         # TODO: remove pedantic once we detect these in candidate selection
-        if not self._expect(rocket.target and rocket.target.id_ == meteor_id,
-            f'Rocket was targeting {rocket.target}', pedantic=True):
+        # TODO: move expects to target picker
+        if not (rocket.target and rocket.target.id_ == meteor_id):
             if rocket.target:
-                self._expect(
-                    self.meteors[rocket.target.id_].targeted_by == rocket_id,
-                    f'Meteor {rocket.target.id_} was not linked correctly.')
                 self.meteors[rocket.target.id_].targeted_by = None
-        if not self._expect(meteor.targeted_by == rocket_id,
-            f'Meteor was being targeted by {meteor.targeted_by}',
-            pedantic=True):
-            if meteor.targeted_by is not None:
-                self._expect(
-                    (self.rockets[meteor.targeted_by].target and
-                     self.rockets[meteor.targeted_by].target.id_ == meteor_id),
-                    f'Rocket {meteor.targeted_by} was not linked correctly.')
-                self.rockets[meteor.targeted_by].target = None
+        if not (meteor.targeted_by == rocket_id):
+            self.rockets[meteor.targeted_by].target = None
+        # if not self._expect(rocket.target and rocket.target.id_ == meteor_id,
+        #     f'Rocket was targeting {rocket.target}', pedantic=True):
+        #     if rocket.target:
+        #         self._expect(
+        #             self.meteors[rocket.target.id_].targeted_by == rocket_id,
+        #             f'Meteor {rocket.target.id_} was not linked correctly.')
+        #         self.meteors[rocket.target.id_].targeted_by = None
+        # if not self._expect(meteor.targeted_by == rocket_id,
+        #     f'Meteor was being targeted by {meteor.targeted_by}',
+        #     pedantic=True):
+        #     self._expect(
+        #         (self.rockets[meteor.targeted_by].target and
+        #          self.rockets[meteor.targeted_by].target.id_ == meteor_id),
+        #         f'Rocket {meteor.targeted_by} was not linked correctly.')
+        #     self.rockets[meteor.targeted_by].target = None
         # TODO: expect spawns
         del self.rockets[rocket_id]
         del self.meteors[meteor_id]

@@ -1,11 +1,12 @@
 from game_message import *
 
+import asserter
 import game_events
-import physics
 
 class Stats:
 
-    def __init__(self):
+    def __init__(self, asserter_: asserter.Asserter):
+        self.asserter = asserter_
         self.constants = None
 
         self.score = 0
@@ -13,8 +14,6 @@ class Stats:
         self.wiffs = 0
         self.hit_stats = {type_: 0 for type_ in MeteorType}
         self.miss_stats = {type_: 0 for type_ in MeteorType}
-        self.broken_invariants = 0
-        self.broken_pedantic_invariants = 0
         # TODO: hit time deltas stats
         # TODO: wrong target stats
 
@@ -22,13 +21,13 @@ class Stats:
         return game_events.ListenerCallbacks(
             on_first_tick=self.on_first_tick,
             on_before_events=self.on_before_events,
+            on_after_events=self.on_after_events,
             on_hit=self.on_hit,
             on_miss=self.on_miss,
             on_wiff=self.on_wiff)
 
-    def on_first_tick(
-        self, events: game_events.GameEvents, constants: Constants,
-        bounds: physics.Bounds) -> None:
+    def on_first_tick(self, events: game_events.GameEvents,
+                      constants: Constants, bounds) -> None:
         self.constants = constants
 
     def on_before_events(self,
@@ -39,6 +38,12 @@ class Stats:
                   f'{game.score + self.lost_score} potential)')
             if changes.just_shot:
                 print('PEW!')
+
+    def on_after_events(self,
+        events: game_events.GameEvents, game: GameMessage):
+        if not self.asserter.expect(self.score == game.score,
+            f'Predicted score {self.score}, but game has {game.score}'):
+            self.score = game.score  # Adjust, otherwise we'll keep spamming.
 
     def on_hit(self, events: game_events.GameEvents, rocket_id: str,
                meteor_id: str, t: float) -> None:
@@ -69,11 +74,11 @@ class Stats:
         print(f'  ({self.score/potential*100:.1f}% points efficient)')
 
         print()
-        if self.broken_invariants == 0:
+        if self.asserter.eval_fails == 0:
             print('No invariants were broken during the game.')
         else:
-            print(f'[!!!] {self.broken_invariants} INVARIANTS BROKEN [!!!]')
-        print(f'{self.broken_pedantic_invariants} pedantic invariants broken.')
+            print(f'[!!!] {self.asserter.eval_fails} INVARIANTS BROKEN [!!!]')
+        print(f'{self.asserter.pedantic_eval_fails} pedantic invariants broken.')
 
         print()
         if self.wiffs == 0:

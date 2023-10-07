@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 from game_message import *
 from actions import *
 
+import asserter
 import game_events
 import physics
 import stats
@@ -13,12 +14,14 @@ import stats
 class Bot:
     def __init__(self, on_server: bool):
         self.verbose = on_server
-        self.debug_mode = not on_server
         self.constants = None
         self.bounds = None
-        self.events = game_events.GameEvents(self.debug_mode)
-        self.stats = stats.Stats()
+        debug_mode = not on_server
+        asserter_ = asserter.Asserter(debug_mode)
+        self.events = game_events.GameEvents()
+        self.stats = stats.Stats(asserter_)
 
+        self.events.add_listener(asserter_.callbacks())
         self.events.add_listener(self.stats.callbacks())
 
         # TODO: detect when expected explosions spawn, remove from this list
