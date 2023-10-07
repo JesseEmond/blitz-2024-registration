@@ -20,17 +20,50 @@ class GameMessage:
     rockets: List[Projectile]
     score: int
 
+    def just_shot(self) -> bool:
+        return self.cannon.cooldown == self.constants.cannonCooldownTicks - 1
+
+    def _debug_print(self) -> None:
+        print(f'Rockets ({len(self.rockets)}):')
+        for rocket in self.rockets:
+            print(f'- {rocket.id}: {rocket._print_pos()} '
+                  f'going {rocket._print_vel()}\t(size {rocket.size})')
+        print(f'Meteors ({len(self.meteors)}):')
+        for meteor in self.meteors:
+            info = self.constants.meteorInfos[meteor.meteorType]
+            print(f'- {meteor.id}:\t{meteor.meteorType}\t'
+                  f'{meteor._print_pos()}\tgoing {meteor._print_vel()}'
+                  f'\t(size {meteor.size}, score: {info.score})')
+        just_shot = ' (Just shot!)' if self.just_shot() else ''
+        print(f'Cannon is at {self.cannon.position.pprint()} '
+              f'(cooldown: {self.cannon.cooldown}/'
+              f'{self.constants.cannonCooldownTicks}){just_shot}')
+        world = self.constants.world
+        print(f'World is {world.width}x{world.height}')
+
 
 @dataclass(eq=True, frozen=True)
 class Vector:
    x: float 
    y: float 
 
+   def pprint(self) -> str:
+        return f'({self.x:7.2f},{self.y:7.2f})'
+
    def from_angle(angle: float) -> 'Vector':
        return Vector(math.cos(angle), math.sin(angle))
 
-   def norm(self) -> 'Vector':
+   def normalized(self) -> 'Vector':
        return self.scale(1 / self.len())
+
+   def dist_sq(self, other: 'Vector') -> float:
+       return self.minus(other).len_sq()
+
+   def dist(self, other: 'Vector') -> float:
+       return self.minus(other).len()
+
+   def in_range(self, other: 'Vector', r: float) -> bool:
+       return self.dist_sq(other) <= r * r
 
    def inv(self) -> 'Vector':
        return Vector(-self.x, -self.y)
@@ -73,9 +106,21 @@ class Body:
     velocity: Vector
     size: float
 
+    def contains(self, point: Vector) -> bool:
+        return self.position.in_range(point, self.size)
+
     def advance(self, delta_t: float) -> 'Body':
         new_pos = self.position.add(self.velocity.scale(delta_t))
         return Body(position=new_pos, velocity=self.velocity, size=self.size)
+
+    def _print_pos(self) -> str:
+        return self.position.pprint()
+
+    def _print_vel(self) -> str:
+        vel = self.velocity
+        return (f'{math.degrees(vel.angle()):7.2f}°@{vel.len():5.2f}\t'
+                    f'({vel.x:.2f},{vel.y:.2f})')
+
 
 
 @dataclass

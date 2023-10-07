@@ -21,16 +21,21 @@ def time_until_out_of_bounds(body: Body, bounds: 'Bounds') -> float:
     x, y = body.position.components()
     vx, vy = body.velocity.components()
     assert vx != 0 or vy != 0, f'Null velocity: {body}'
+    # TODO: Do units go out-of-bounds when their center leaves, or it's the
+    # entire unit that must be out? Visually I'd say center, but to verify.
+
+    # Only the center of the body matters for top/right/bottom hits (despawn).
+    # On the left side, the size must be taken into account (must be fully out).
     tx = None
-    if vx > 0:
-        tx = (bounds.right + body.size - x) / vx
-    elif vx < 0:
+    if vx > 0:  # Right exit
+        tx = (bounds.right - x) / vx
+    elif vx < 0:  # Left exit
         tx = (x + body.size - bounds.left) / (-vx)
     ty = None
-    if vy > 0:
-        ty = (bounds.bottom + body.size - y) / vy
-    elif vy < 0:
-        ty = (y + body.size - bounds.top) / (-vy)
+    if vy > 0:  # Top exit
+        ty = (bounds.bottom - y) / vy
+    elif vy < 0:  # Bottom exit
+        ty = (y - bounds.top) / (-vy)
     tx = tx if tx is not None else ty
     ty = ty if ty is not None else tx
     return min(tx, ty)
@@ -89,7 +94,7 @@ def rewind_body_collision(
     # Fast-forward to the collision point
     source_pos = source.position.add(source.velocity.scale(collision.delta_t))
     target_pos = target.position.add(target.velocity.scale(collision.delta_t))
-    delta = target_pos.minus(source_pos).norm()
+    delta = target_pos.minus(source_pos).normalized()
     collision.target_collision_point = source_pos.add(delta.scale(source.size))
 
 
@@ -106,7 +111,7 @@ def aim_at_moving_target(
         collision = CollisionInfo(
             target=collision_point, delta_t=t, center_collision_t=t,
             target_collision_point=None)
-        bullet_dir = collision_point.minus(source).norm()
+        bullet_dir = collision_point.minus(source).normalized()
         bullet = Body(position=source,
             velocity=bullet_dir.scale(bullet_speed), size=bullet_size)
         rewind_body_collision(collision, bullet, target)
@@ -117,10 +122,16 @@ def aim_at_moving_target(
     return earliest
 
 
-def next_collision_time(a: Body, b: Body) -> Optional[float]:
-    r = a.size + b.size
-    a = a.velocity.len_sq() + b.velocity.len_sq()
-    b = -2 * a.velocity.dot(t.velocity)
-    c = -r * r
+def next_collision_time(p: Body, q: Body) -> Optional[float]:
+    # Circle intersection when dist(p, q) = p.size + q.size
+    # ||(p.pos + t p.vel) - (q.pos + t q.vel)|| = p.size + q.size
+    # ... https://stackoverflow.com/a/50722146
+    r = p.size + q.size
+    a = (p.velocity.len_sq() + q.velocity.len_sq()
+         - 2 * p.velocity.dot(q.velocity))
+    b = 2 * (p.position.dot(p.velocity) + q.position.dot(q.velocity)
+             - p.position.dot(q.velocity) - q.position.dot(p.velocity))
+    c = (p.position.len_sq() + q.position.len_sq()
+         - 2 * p.position.dot(q.position) - r * r)
     ts = solve_quadratic(a, b, c)
-    return min(ts) if ts else None
+    return min((t for t in ts if t >= 0), default=None) if ts else None

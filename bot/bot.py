@@ -15,7 +15,7 @@ class Bot:
         self.debug_mode = not on_server
         self.constants = None
         self.bounds = None
-        self.tracker = tracker.Tracker()
+        self.tracker = tracker.Tracker(self.debug_mode)
         # TODO: We might miss our target (e.g. hit something else) -- handle.
         # TODO: Clean up hit list when meteors are destroyed/gone
         self.hit_list = set()
@@ -121,9 +121,7 @@ class Bot:
             self.tracker.first_tick(self.constants, self.bounds)
             self.info(f'Constants: {self.constants}')
 
-        # TODO: tracker spawn detection isn't great -- is the spawn position
-        #       based on the intersection position...?
-        # self.tracker.update(game)
+        self.tracker.update(game)
 
         actions = []
 
@@ -146,7 +144,8 @@ class Bot:
             if game.tick + collision.delta_t >= TOTAL_TICKS:
                 self.info(f'Can not reach target in time: {game.tick + collision.delta_t}')
                 continue
-            print(f'Predicting collision. {collision}')
+            # TODO: log with tracker & verify
+            # print(f'Predicting collision. {collision}')
             actions.append(LookAtAction(target=collision.target))
 
             if not game.cannon.cooldown:
