@@ -5,8 +5,8 @@ from typing import List, Optional, Tuple
 from game_message import *
 from actions import *
 
+import game_events
 import physics
-import tracker
 
 
 class Bot:
@@ -15,14 +15,14 @@ class Bot:
         self.debug_mode = not on_server
         self.constants = None
         self.bounds = None
-        self.tracker = tracker.Tracker(self.debug_mode)
+        self.events = game_events.GameEvents(self.debug_mode)
         # TODO: detect when expected explosions spawn, remove from this list
         self.expected_explosions = {}
         self.next_explosion_id = 0
 
     def get_candidates(self, meteors: List[Meteor]) -> List[Meteor]:
         targets = [target for target in meteors
-                   if not self.tracker.is_targeted(target.id)]
+                   if not self.events.is_targeted(target.id)]
         # TODO: Take into accounts meteors that will spawn
         return targets
 
@@ -47,15 +47,6 @@ class Bot:
             return None
         self.info(f'Aiming ahead, will hit in time {collision.delta_t}')
         return collision
-
-    def can_reach_target(self, cannon: Cannon, target: Vector) -> bool:
-        if target.x < cannon.position.x:
-            return False  # We missed the shot -- will pass us!
-        if target.y < 0 or target.y >= self.constants.world.height:
-            return False  # Asteroid will go off screen.
-        if target.x >= self.constants.world.width:
-            return False  # If asteroid explodes to the right
-        return True
 
     def expect_explosion(self, meteor: Meteor, position: Vector) -> None:
         # TODO: this requires more work.
@@ -108,10 +99,10 @@ class Bot:
         if not self.constants:
             self.constants = game.constants
             self.bounds = physics.Bounds(game.cannon, game.constants.world)
-            self.tracker.first_tick(self.constants, self.bounds)
+            self.events.first_tick(self.constants, self.bounds)
             self.info(f'Constants: {self.constants}')
 
-        self.tracker.update(game)
+        self.events.update(game)
 
         actions = []
 
@@ -128,18 +119,34 @@ class Bot:
                 self.info('Can not reach target (no collision found).')
                 continue
             self.info(f'Aiming ahead at: {collision}')
-            if not self.can_reach_target(game.cannon, collision.target):
+            if self.bounds.is_out(target.advance(collision.delta_t)):
                 self.info('Can not reach aim (off-screen/past us).')
                 continue
             hit_time = game.tick + collision.delta_t
             if hit_time >= TOTAL_TICKS:
                 self.info(f'Can not reach target in time: {game.tick + collision.delta_t}')
                 continue
+            rocket_dir = collision.target.minus(
+                game.cannon.position).normalized()
+            rocket = Body(
+                game.cannon.position,
+                rocket_dir.scale(game.constants.rockets.speed),
+                game.constants.rockets.size)
+            others = [m for m in game.meteors if m.id != target.id]
+            others_hit_t = physics.earliest_hit(rocket, others)
+            # TODO: Instead of checking this here, update per-meteor targets at
+            # the very start (before filtering candidates). We're currently
+            # missing cases where we're "surprised" by an explosion that messes
+            # with our assignments.
+            if others_hit_t is not None and others_hit_t < collision.delta_t:
+                self.info(('Would hit other meteor before reaching target: ',
+                           f'{others_hit_t} < {collision.delta_t}'))
+                continue
             actions.append(LookAtAction(target=collision.target))
 
             if not game.cannon.cooldown:
                 self.info(f'Shooting! Marking {target.id} on our hit-list.')
-                self.tracker.assign_target(target.id, hit_time)
+                self.events.assign_target(target.id, hit_time)
                 actions.append(ShootAction())
                 # TODO: requires more work.
                 # self.expect_explosion(target, collision.target)
@@ -151,4 +158,4 @@ class Bot:
 
     def on_close(self):
         print('Game done! Summary...')
-        self.tracker.print_stats()
+        self.events.print_stats()

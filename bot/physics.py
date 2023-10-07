@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from game_message import *
 
@@ -10,7 +10,7 @@ class CollisionInfo:
     target: Vector
     # time from now until the collision occurs
     delta_t: float
-    # position where the sphere collision happens on the target's radius
+    # position where the collision happens on the target's radius
     target_collision_point: Optional[Vector]  # only set if rewind is used
     # time when the centers would collide
     center_collision_t: float
@@ -126,3 +126,14 @@ def next_collision_time(p: Body, q: Body) -> Optional[float]:
          - 2 * p.position.dot(q.position) - r * r)
     ts = solve_quadratic(a, b, c)
     return min((t for t in ts if t >= 0), default=None) if ts else None
+
+
+def earliest_hit(body: Body, others: List[Body]) -> Optional[float]:
+    earliest = None
+    for other in others:
+        t = next_collision_time(body, other)
+        if t is None:
+            continue
+        if earliest is None or t < earliest:
+            earliest = t
+    return earliest

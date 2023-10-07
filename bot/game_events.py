@@ -1,11 +1,23 @@
 """Keep track of the state of the game and various statistics."""
+# TODO: move stats tracking outside
+# TODO: move target assignment out (anything else to keep 'gameevents' clean?)
 import dataclasses
 import math
-from typing import List, Mapping, Optional, Set, Tuple
+from typing import Callable, List, Mapping, Optional, Set, Tuple
 
 from game_message import *
 
 import physics
+
+
+@dataclasses.dataclass
+class Listener:
+    # on_hit(game_events, rocket_id, meteor_id, collision_time)
+    on_hit: Optional[Callable[['GameEvents', str, str, float], None]] = None
+    # on_miss(game_events, meteor_id)
+    on_miss: Optional[Callable[['GameEvents', str], None]] = None
+    # on_wiffed(game_events, rocket_id)
+    on_wiffed: Optional[Callable[['GameEvents', str], None]] = None
 
 
 @dataclasses.dataclass
@@ -42,8 +54,8 @@ class Changes:
         return self.just_shot and not self.new_rockets
 
 
-class Tracker:
-    """Track source and statuses of rockets and meteors."""
+class GameEvents:
+    """Track source and statuses of rockets and meteors, detect events."""
 
     def __init__(self, debug_mode: bool):
         self.debug_mode = debug_mode
@@ -52,6 +64,7 @@ class Tracker:
         self.meteors = {}  # ID to MeteorInfo
         self.rockets = {}  # ID to RocketInfo
         self.next_rocket_target = None
+        self.listeners = []
 
         self.score = 0
         self.lost_score = 0
@@ -70,6 +83,9 @@ class Tracker:
         # Set on every 'update', used for global access when debug-printing
         self._debug_game = None
         self._debug_previous_game = None
+
+    def add_listener(self, listener: Listener) -> None:
+        self.listeners.append(listener)
 
     def first_tick(self, constants: Constants, bounds: physics.Bounds) -> None:
         self.constants = constants
@@ -224,6 +240,9 @@ class Tracker:
             self.on_wiffed(rocket_id)
 
     def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> None:
+        for listener in self.listeners:
+            if listener.on_hit:
+                listener.on_hit(self, rocket_id, meteor_id, t)
         rocket = self.rockets[rocket_id]
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
@@ -257,6 +276,9 @@ class Tracker:
         del self.meteors[meteor_id]
 
     def on_miss(self, meteor_id: str) -> None:
+        for listener in self.listeners:
+            if listener.on_miss:
+                listener.on_miss(self, meteor_id)
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.type_]
         total_score = self.constants.potential_score(meteor.type_)
@@ -267,6 +289,9 @@ class Tracker:
         del self.meteors[meteor_id]
 
     def on_wiffed(self, rocket_id: str) -> None:
+        for listener in self.listeners:
+            if listener.on_wiff:
+                listener.on_wiff(self, rocket_id)
         print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
         del self.rockets[rocket_id]
         self.wiffs += 1
@@ -287,7 +312,7 @@ class Tracker:
             print('No invariants were broken during the game.')
         else:
             print(f'[!!!] {self.broken_invariants} INVARIANTS BROKEN [!!!]')
-        print(f'{self.broken_pedantic_invariants} peantic invariants broken.')
+        print(f'{self.broken_pedantic_invariants} pedantic invariants broken.')
         print()
         if self.wiffs == 0:
             print('All shots hit.')
