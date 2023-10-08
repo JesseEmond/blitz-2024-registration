@@ -7,8 +7,10 @@ from actions import *
 
 import asserter
 import game_events
+import invariants
 import physics
 import stats
+import target_tracker
 
 
 class Bot:
@@ -20,9 +22,12 @@ class Bot:
         asserter_ = asserter.Asserter(debug_mode)
         self.events = game_events.GameEvents()
         self.stats = stats.Stats(asserter_)
+        self.targeter = target_tracker.TargetTracker(asserter_, self.stats)
 
-        self.events.add_listener(asserter_.callbacks())
-        self.events.add_listener(self.stats.callbacks())
+        self.events.add_listener(asserter_)
+        self.events.add_listener(self.stats)
+        self.events.add_listener(self.targeter)
+        self.events.add_listener(invariants.Invariants(asserter_))
 
         # TODO: detect when expected explosions spawn, remove from this list
         self.expected_explosions = {}
@@ -30,7 +35,7 @@ class Bot:
 
     def get_candidates(self, meteors: List[Meteor]) -> List[Meteor]:
         targets = [target for target in meteors
-                   if not self.events.is_targeted(target.id)]
+                   if not self.targeter.is_targeted(target.id)]
         # TODO: Take into accounts meteors that will spawn
         return targets
 
@@ -154,7 +159,7 @@ class Bot:
 
             if not game.cannon.cooldown:
                 self.info(f'Shooting! Marking {target.id} on our hit-list.')
-                self.events.assign_target(target.id, hit_time)
+                self.targeter.assign_target(target.id, hit_time)
                 actions.append(ShootAction())
                 # TODO: requires more work.
                 # self.expect_explosion(target, collision.target)

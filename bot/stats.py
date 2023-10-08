@@ -1,9 +1,11 @@
+from typing import Optional
+
 from game_message import *
 
 import asserter
 import game_events
 
-class Stats:
+class Stats(game_events.Listener):
 
     def __init__(self, asserter_: asserter.Asserter):
         self.asserter = asserter_
@@ -14,17 +16,8 @@ class Stats:
         self.wiffs = 0
         self.hit_stats = {type_: 0 for type_ in MeteorType}
         self.miss_stats = {type_: 0 for type_ in MeteorType}
-        # TODO: hit time deltas stats
-        # TODO: wrong target stats
-
-    def callbacks(self) -> game_events.ListenerCallbacks:
-        return game_events.ListenerCallbacks(
-            on_first_tick=self.on_first_tick,
-            on_before_events=self.on_before_events,
-            on_after_events=self.on_after_events,
-            on_hit=self.on_hit,
-            on_miss=self.on_miss,
-            on_wiff=self.on_wiff)
+        self.wrong_targets = 0
+        self.hit_time_deltas = []
 
     def on_first_tick(self, events: game_events.GameEvents,
                       constants: Constants, bounds) -> None:
@@ -39,8 +32,8 @@ class Stats:
             if changes.just_shot:
                 print('PEW!')
 
-    def on_after_events(self,
-        events: game_events.GameEvents, game: GameMessage):
+    def on_after_events(self, events: game_events.GameEvents,
+                        game: GameMessage, changes: game_events.Changes):
         if not self.asserter.expect(self.score == game.score,
             f'Predicted score {self.score}, but game has {game.score}'):
             self.score = game.score  # Adjust, otherwise we'll keep spamming.
@@ -66,6 +59,26 @@ class Stats:
     def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
         self.wiffs += 1
+
+    def on_new_rocket(self, events: game_events.GameEvents,
+                      rocket_id: str) -> None:
+        if rocket_id == game_events.INSTANT_KILL_ROCKET_ID:
+            print('[INSTA-KILL] New rocket spawned and hit something '
+                  'right away')
+
+    def on_meteor_spawn(self, events: game_events.GameEvents,
+                        meteor_id: str) -> None:
+        meteor = events.meteors[meteor_id]
+        print(f'[SPAWN] New {meteor.type_} meteor {meteor_id}')
+
+    def record_wrong_target(self, rocket_id: str, target: Optional[str],
+                            meteor_id: str) -> None:
+        self.wrong_targets += 1
+        print(f'[OOPS] Rocket {rocket_id} hit {meteor_id} instead of {target}!')
+
+    def record_target_prediction(self, predicted: float,
+                                 hit_time: float) -> None:
+        self.hit_time_deltas.append(predicted - hit_time)
 
     def print_stats(self) -> None:
         potential = self.score + self.lost_score
@@ -100,11 +113,9 @@ class Stats:
                   f'{miss_potential} points\' worth')
 
         print()
-        print('TODO: restore wrong target hits')
-        # print(f'Wrong target hits: {self.wrong_target}')
+        print(f'Wrong target hits: {self.wrong_targets}')
         print()
-        print('TODO: restore time predictions')
-        # print('Hit time predictions for right targets')
-        # print(f'Min: {min(self.hit_time_deltas)}')
-        # print(f'Max: {max(self.hit_time_deltas)}')
-        # print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas)}')
+        print('Hit time predictions for right targets')
+        print(f'Min: {min(self.hit_time_deltas)}')
+        print(f'Max: {max(self.hit_time_deltas)}')
+        print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas)}')

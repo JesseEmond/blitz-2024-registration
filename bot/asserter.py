@@ -2,7 +2,7 @@ from game_message import *
 
 import game_events
 
-class Asserter:
+class Asserter(game_events.Listener):
     """Helper class to debug when invariants are broken."""
     
     def __init__(self, debug_mode: bool, pedantic: bool = False):
@@ -13,9 +13,6 @@ class Asserter:
         self.pedantic_eval_fails = 0
         self.game = None
         self.prev_game = None
-
-    def callbacks(self) -> game_events.ListenerCallbacks:
-        return game_events.ListenerCallbacks(on_tick=self.on_tick)
 
     def on_tick(
         self, events: game_events.GameEvents, game: GameMessage) -> None:
