@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional
+from typing import Optional, Set
 
 from game_message import *
 
@@ -58,9 +58,8 @@ class TargetTracker(game_events.Listener):
              if target.id_ == meteor_id),
             None)
 
-    def is_targeted(self, meteor_id: str) -> bool:
-        return any(target for target in self.rocket_targets.values()
-                   if target.id_ == meteor_id)
+    def targeted_meteors(self) -> Set[str]:
+        return {target.id_ for target in self.rocket_targets.values()}
 
     def assign_target(self, meteor_id: str, hit_time: float) -> None:
         self.asserter.expect(

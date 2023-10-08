@@ -21,9 +21,6 @@ def time_until_out_of_bounds(body: Body, bounds: 'Bounds') -> float:
     x, y = body.position.components()
     vx, vy = body.velocity.components()
     assert vx != 0 or vy != 0, f'Null velocity: {body}'
-    # TODO: Do units go out-of-bounds when their center leaves, or it's the
-    # entire unit that must be out? Visually I'd say center, but to verify.
-
     # Only the center of the body matters for top/right/bottom hits (despawn).
     # On the left side, the size must be taken into account (must be fully out).
     tx = None
