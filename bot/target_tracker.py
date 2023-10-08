@@ -52,6 +52,10 @@ class TargetTracker(game_events.Listener):
         if target:
             del self.rocket_targets[rocket_id]
 
+    def refresh_assignments(self, events: game_events.GameEvents) -> None:
+        # TODO: check if other hits will happen on the way vs. what was planned.
+        pass
+
     def get_assignment(self, meteor_id: str) -> Optional[str]:
         return next(
             (rocket_id for rocket_id, target in self.rocket_targets.items()

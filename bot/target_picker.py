@@ -50,11 +50,8 @@ class TargetPicker:
                 self.info(f'Can not reach target in time: {hit_time}')
                 continue
             others = [m for m in meteors if m.id != target.id]
+            # TODO: take into account that live projectiles might clear targets
             others_hit_t = physics.earliest_hit(rocket, others)
-            # TODO: Instead of checking this here, update per-meteor targets at
-            # the very start (before filtering candidates). We're currently
-            # missing cases where we're "surprised" by an explosion that messes
-            # with our assignments.
             if others_hit_t is not None and others_hit_t < collision.delta_t:
                 self.info(('Would hit other meteor before reaching target: ',
                            f'{others_hit_t} < {collision.delta_t}'))

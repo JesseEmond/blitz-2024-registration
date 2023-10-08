@@ -21,22 +21,23 @@ class Bot:
         self.constants = None
         self.bounds = None
 
-        asserter_ = asserter.Asserter(debug_mode)
+        self.asserter = asserter.Asserter(debug_mode)
         self.events = game_events.GameEvents()
-        self.stats = stats.Stats(asserter_)
-        self.tracker = target_tracker.TargetTracker(asserter_, self.stats)
+        self.stats = stats.Stats(self.asserter)
+        self.tracker = target_tracker.TargetTracker(self.asserter, self.stats)
         self.picker = target_picker.TargetPicker(self.verbose)
 
-        self.events.add_listener(asserter_)
+        self.events.add_listener(self.asserter)
         self.events.add_listener(self.stats)
         self.events.add_listener(self.tracker)
-        self.events.add_listener(invariants.Invariants(asserter_))
+        self.events.add_listener(invariants.Invariants(self.asserter))
 
     def info(self, s: str) -> None:
         if self.verbose:
             print(s)
 
     def get_next_move(self, game: GameMessage):
+        start_time = time.time()
         self.info(f"Playing tick {game.tick}. Score: {game.score}")
 
         if not self.constants:
@@ -46,7 +47,7 @@ class Bot:
             self.info(f'Constants: {self.constants}')
 
         self.events.update(game)
-        # TODO: update tracker assignments
+        self.tracker.refresh_assignments(self.events)
 
         actions = []
 
@@ -71,6 +72,10 @@ class Bot:
         else:
             self.info(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
 
+        tick_time = time.time() - start_time
+        self.stats.record_tick_time(tick_time)
+        self.info(f'Tick time: {tick_time * 1000:.1f}ms')
+        self.asserter.expect(tick_time < 1, f'Slow tick: {tick_time:.3f}s')
         return actions
 
     def on_close(self):

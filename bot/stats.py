@@ -18,6 +18,7 @@ class Stats(game_events.Listener):
         self.miss_stats = {type_: 0 for type_ in MeteorType}
         self.wrong_targets = 0
         self.hit_time_deltas = []
+        self.tick_times = []
 
     def on_first_tick(self, events: game_events.GameEvents,
                       constants: Constants, bounds) -> None:
@@ -80,6 +81,9 @@ class Stats(game_events.Listener):
                                  hit_time: float) -> None:
         self.hit_time_deltas.append(predicted - hit_time)
 
+    def record_tick_time(self, time: float) -> None:
+        self.tick_times.append(time)
+
     def print_stats(self) -> None:
         potential = self.score + self.lost_score
         print(f'Final score:\t\t{self.score} points')
@@ -119,3 +123,8 @@ class Stats(game_events.Listener):
         print(f'Min: {min(self.hit_time_deltas):.5f}')
         print(f'Max: {max(self.hit_time_deltas):.5f}')
         print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas):.5f}')
+        print()
+        print('Tick times')
+        print(f'Min: {min(self.tick_times)*1000:.1f}ms')
+        print(f'Max: {max(self.tick_times)*1000:.1f}ms')
+        print(f'Avg: {sum(self.tick_times)/len(self.tick_times)*1000:.1f}ms')
