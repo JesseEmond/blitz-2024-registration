@@ -58,8 +58,8 @@ class Bot:
         meteor_ids = {m.id for m in game.meteors}
         unassigned_ids = meteor_ids - assigned_ids
         target = self.picker.pick_target(
-            game.cannon, game.meteors, unassigned_ids, self.constants,
-            self.bounds, game.tick)
+            game.cannon, game.rockets, game.meteors, unassigned_ids,
+            self.constants, self.bounds, game.tick)
         if not target:
             self.info('No target to shoot at!')
             return actions

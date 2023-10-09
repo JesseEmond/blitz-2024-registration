@@ -4,6 +4,7 @@ from typing import List, Optional, Set
 from game_message import *
 
 import physics
+import simulation
 
 @dataclasses.dataclass
 class Target:
@@ -18,8 +19,8 @@ class TargetPicker:
         self.verbose = verbose
 
     def pick_target(
-        self, cannon: Cannon, meteors: List[Meteor], unassigned_ids: Set[str],
-        constants: Constants, bounds: physics.Bounds,
+        self, cannon: Cannon, rockets: List[Projectile], meteors: List[Meteor],
+        unassigned_ids: Set[str], constants: Constants, bounds: physics.Bounds,
         tick: int) -> Optional[Target]:
         if not meteors:
             self.info('No meteors to shoot at')
@@ -38,9 +39,10 @@ class TargetPicker:
             if rocket_dir.x < 0:
                 self.info('Can not reach target (behind cannon).')
                 continue
-            rocket = Body(cannon.position,
-                          rocket_dir.scale(constants.rockets.speed),
-                          constants.rockets.size)
+            rocket = Projectile(
+                id='new_rocket', position=cannon.position,
+                velocity=rocket_dir.scale(constants.rockets.speed),
+                size=constants.rockets.size)
             if (bounds.is_out(target.advance(collision.delta_t)) and
                 bounds.is_out(rocket.advance(collision.delta_t))):
                 self.info('Can not reach aim target (off-screen/past us).')
@@ -49,12 +51,13 @@ class TargetPicker:
             if hit_time >= TOTAL_TICKS:
                 self.info(f'Can not reach target in time: {hit_time}')
                 continue
-            others = [m for m in meteors if m.id != target.id]
-            # TODO: take into account that live projectiles might clear targets
-            others_hit_t = physics.earliest_hit(rocket, others)
-            if others_hit_t is not None and others_hit_t < collision.delta_t:
-                self.info(('Would hit other meteor before reaching target: ',
-                           f'{others_hit_t} < {collision.delta_t}'))
+            sim = simulation.Simulation()
+            sim_rockets = rockets + [rocket]
+            hits = sim.simulate(bounds, sim_rockets, meteors)
+            my_hit = next((hit for hit in hits if hit.rocket_id == rocket.id),
+                          None)
+            if not my_hit or my_hit.meteor_id != target.id:
+                self.info('Would hit other meteor before reaching target: {my_hit}')
                 continue
 
             return Target(target.id, collision.target, hit_time)
