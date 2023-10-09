@@ -47,7 +47,7 @@ class Bot:
             self.info(f'Constants: {self.constants}')
 
         self.events.update(game)
-        self.tracker.refresh_assignments(self.events)
+        self.tracker.refresh_assignments(game)
 
         actions = []
 

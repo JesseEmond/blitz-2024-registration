@@ -6,6 +6,7 @@ from game_message import *
 import asserter
 import game_events
 import physics
+import simulation
 import stats
 
 @dataclasses.dataclass
@@ -19,8 +20,14 @@ class TargetTracker(game_events.Listener):
         self.asserter = asserter_
         self.stats = stats_
 
+        self.bounds = None
+
         self.rocket_targets = {}
         self.next_rocket_target = None
+
+    def on_first_tick(self, events: game_events.GameEvents,
+                      constants: Constants, bounds: physics.Bounds) -> None:
+        self.bounds = bounds
 
     def on_new_rocket(self, events: game_events.GameEvents,
                       rocket_id: str) -> None:
@@ -48,13 +55,28 @@ class TargetTracker(game_events.Listener):
                 pedantic=True):
                 del self.rocket_targets[prev_assignment]
         else:
-            self.stats.record_target_prediction(target.hit_time, collision_time)
+            self.stats.record_prediction_result(target.hit_time, collision_time)
         if target:
             del self.rocket_targets[rocket_id]
 
-    def refresh_assignments(self, events: game_events.GameEvents) -> None:
-        # TODO: check if other hits will happen on the way vs. what was planned.
-        pass
+    def refresh_assignments(self, game: GameMessage) -> None:
+        sim = simulation.Simulation()
+        seen_rockets = set()
+        hits = sim.simulate(self.bounds, game.rockets, game.meteors)
+        for hit in hits:
+            seen_rockets.add(hit.rocket_id)
+            target = self.rocket_targets.get(hit.rocket_id)
+            target_id = target.id_ if target else None
+            if target_id != hit.meteor_id:
+                self.rocket_targets[hit.rocket_id] = Target(
+                    hit.meteor_id, game.tick + hit.time)
+                self.stats.record_changed_target(hit.rocket_id, target_id,
+                                                 hit.meteor_id)
+        missing_rockets = set(self.rocket_targets.keys()) - seen_rockets
+        for rocket_id in missing_rockets:
+            target_id = self.rocket_targets[rocket_id].id_
+            self.stats.record_changed_target(rocket_id, target_id, None)
+            del self.rocket_targets[rocket_id]
 
     def get_assignment(self, meteor_id: str) -> Optional[str]:
         return next(

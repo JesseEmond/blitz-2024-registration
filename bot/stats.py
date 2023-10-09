@@ -17,6 +17,7 @@ class Stats(game_events.Listener):
         self.hit_stats = {type_: 0 for type_ in MeteorType}
         self.miss_stats = {type_: 0 for type_ in MeteorType}
         self.wrong_targets = 0
+        self.target_changes = 0
         self.hit_time_deltas = []
         self.tick_times = []
 
@@ -77,9 +78,16 @@ class Stats(game_events.Listener):
         self.wrong_targets += 1
         print(f'[OOPS] Rocket {rocket_id} hit {meteor_id} instead of {target}!')
 
-    def record_target_prediction(self, predicted: float,
+    def record_prediction_result(self, predicted: float,
                                  hit_time: float) -> None:
         self.hit_time_deltas.append(predicted - hit_time)
+
+    def record_changed_target(self,
+        rocket_id: str, old_target: Optional[str],
+        new_target: Optional[str]) -> None:
+        self.target_changes += 1
+        print(f'[UPD8] Rocket {rocket_id} will hit {new_target} instead of '
+              f'{old_target}!')
 
     def record_tick_time(self, time: float) -> None:
         self.tick_times.append(time)
@@ -118,11 +126,16 @@ class Stats(game_events.Listener):
 
         print()
         print(f'Wrong target hits: {self.wrong_targets}')
+
+        print()
+        print(f'Changed target {self.target_changes} times')
+
         print()
         print('Hit time predictions for right targets')
         print(f'Min: {min(self.hit_time_deltas):.5f}')
         print(f'Max: {max(self.hit_time_deltas):.5f}')
         print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas):.5f}')
+
         print()
         print('Tick times')
         print(f'Min: {min(self.tick_times)*1000:.1f}ms')
