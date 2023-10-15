@@ -9,6 +9,14 @@ from typing import Dict, List, Tuple
 TOTAL_TICKS = 1000
 
 
+def center_angle(radians: float) -> float:
+    """Return equivalent angle closer to 0 (in negatives) -- prettier prints."""
+    radians = radians % math.tau
+    if radians >= math.pi:
+        radians -= math.tau
+    return radians
+
+
 @dataclass
 class GameMessage:
     type: str
@@ -35,10 +43,12 @@ class GameMessage:
                   f'{meteor._print_pos()}\tgoing {meteor._print_vel()}'
                   f'\t(size {meteor.size}, score: {info.score})')
         just_shot = ' (Just shot!)' if self.just_shot() else ''
+        orientation = math.degrees(
+            center_angle(math.radians(self.cannon.orientation)))
         print(f'Cannon is at {self.cannon.position.pprint()} '
               f'(cooldown: {self.cannon.cooldown}/'
               f'{self.constants.cannonCooldownTicks}){just_shot}, '
-              f'angle: {self.cannon.orientation:7.2f}°')
+              f'angle: {orientation:7.2f}°')
         world = self.constants.world
         print(f'World is {world.width}x{world.height}')
 
@@ -120,8 +130,8 @@ class Body:
 
     def _print_vel(self) -> str:
         vel = self.velocity
-        return (f'{math.degrees(vel.angle()):7.2f}°@{vel.len():5.2f}\t'
-                    f'({vel.x:.2f},{vel.y:.2f})')
+        angle = math.degrees(center_angle(vel.angle()))
+        return (f'{angle:7.2f}°@{vel.len():5.2f}\t({vel.x:.2f},{vel.y:.2f})')
 
 
 

@@ -5,6 +5,10 @@ from game_message import *
 import asserter
 import game_events
 
+
+def print_angle(radians: float) -> str:
+    return f'{math.degrees(radians):.1f}°'
+
 class Stats(game_events.Listener):
 
     def __init__(self, asserter_: asserter.Asserter):
@@ -20,6 +24,10 @@ class Stats(game_events.Listener):
         self.target_changes = 0
         self.hit_time_deltas = []
         self.tick_times = []
+        self.split_angle_deltas = []
+        self.split_speed_multipliers = []
+        self.split_spawn_pos_dists = []
+        self.split_pos_dists = []
 
     def on_first_tick(self, events: game_events.GameEvents,
                       constants: Constants, bounds) -> None:
@@ -72,6 +80,41 @@ class Stats(game_events.Listener):
                         meteor_id: str) -> None:
         meteor = events.meteors[meteor_id]
         print(f'[SPAWN] New {meteor.type_} meteor {meteor_id}')
+
+    def on_meteor_split_spawn(
+        self, events: game_events.GameEvents, meteor_id: str,
+        split: game_events.MeteorSplit) -> None:
+        meteor = events.meteors[meteor_id]
+        print(f'[SPLIT] Parent {split.parent.meteorType} meteor '
+              f'{split.parent.id} split into {meteor.type_} meteor {meteor_id}')
+        print('Position:')
+        print(f'  predicted: {split.position.pprint()}')
+        print(f'  actual:    {meteor.position.pprint()}')
+        self.split_pos_dists.append(split.position.dist(meteor.position))
+        print('Spawn position:')
+        inferred_actual_spawn = meteor.advance(-split.next_tick_delta_t).position
+        print(f'  predicted: {split.spawn_position.pprint()}')
+        print(f'  actual:    {inferred_actual_spawn.pprint()}')
+        self.split_spawn_pos_dists.append(
+            split.spawn_position.dist(inferred_actual_spawn))
+        def _print_vel(vel) -> str:
+            return (f'{math.degrees(vel.angle()):7.2f}°@{vel.len():5.2f}\t'
+                        f'({vel.x:.2f},{vel.y:.2f})')
+        print('Velocity:')
+        print(f'  predicted: {_print_vel(split.velocity)}')
+        print(f'  actual:    {_print_vel(meteor.velocity)}')
+        print('Angle:')
+        angle_delta = center_angle(meteor.velocity.angle() - split.parent.velocity.angle())
+        print(f'  predicted delta: {print_angle(split.delta_angle)}')
+        print(f'  actual delta:    {print_angle(angle_delta)}')
+        print(f'Parent pos: {split.parent._print_pos()} vel: {split.parent._print_vel()}')
+        self.split_angle_deltas.append(center_angle(split.delta_angle - angle_delta))
+        len_scale = meteor.velocity.len() / split.velocity.len()
+        print(f'Split speed had a speed multiplier of: {len_scale:.2f}')
+        self.split_speed_multipliers.append(len_scale)
+        self.asserter.expect(
+            self.split_spawn_pos_dists[-1] < 0.001,
+            f'Bad spawn prediction: predicted {split.spawn_position} vs {inferred_actual_spawn}\nmeteor: {meteor}\nsplit: {split}')
 
     def record_wrong_target(self, rocket_id: str, target: Optional[str],
                             meteor_id: str) -> None:
@@ -135,6 +178,30 @@ class Stats(game_events.Listener):
         print(f'Min: {min(self.hit_time_deltas):.5f}')
         print(f'Max: {max(self.hit_time_deltas):.5f}')
         print(f'Avg: {sum(self.hit_time_deltas)/len(self.hit_time_deltas):.5f}')
+
+        print()
+        print('Predicted split angle errors')
+        print(f'Min: {print_angle(min(self.split_angle_deltas))}')
+        print(f'Max: {print_angle(max(self.split_angle_deltas))}')
+        print(f'Avg: {print_angle(sum(self.split_angle_deltas)/len(self.split_angle_deltas))}')
+
+        print()
+        print('Predicted split spawn position errors')
+        print(f'Min: {min(self.split_spawn_pos_dists):.2f}')
+        print(f'Max: {max(self.split_spawn_pos_dists):.2f}')
+        print(f'Avg: {sum(self.split_spawn_pos_dists)/len(self.split_spawn_pos_dists):.2f}')
+
+        print()
+        print('Predicted tick post-spawn position distances (impacted by speed noise)')
+        print(f'Min: {min(self.split_pos_dists):.2f}')
+        print(f'Max: {max(self.split_pos_dists):.2f}')
+        print(f'Avg: {sum(self.split_pos_dists)/len(self.split_pos_dists):.2f}')
+
+        print()
+        print('Split speed multipliers')
+        print(f'Min: {min(self.split_speed_multipliers):.3f}')
+        print(f'Max: {max(self.split_speed_multipliers):.3f}')
+        print(f'Avg: {sum(self.split_speed_multipliers)/len(self.split_speed_multipliers):.3f}')
 
         print()
         print('Tick times')

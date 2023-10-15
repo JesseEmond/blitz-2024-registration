@@ -9,6 +9,14 @@ class Invariants(game_events.Listener):
         self.asserter = asserter_
         self.game_tick = None
 
+    def on_meteor_spawn(self, events: game_events.GameEvents,
+                        meteor_id: str) -> None:
+        meteor = events.meteors[meteor_id]
+        self.asserter.expect(
+            meteor.type_ == MeteorType.Large,
+            'Non-large meteor spawned, likely bug in split detection logic: '
+            f'{meteor}')
+
     def on_before_events(self, events: game_events.GameEvents,
                          game: GameMessage, changes: game_events.Changes):
         self.game_tick = game.tick

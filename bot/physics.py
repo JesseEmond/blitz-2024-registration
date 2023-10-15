@@ -49,6 +49,9 @@ class Bounds:
     def is_out(self, body: Body) -> bool:
         return time_until_out_of_bounds(body, self) <= 0
 
+    def is_out_vertically(self, body: Body) -> bool:
+        return body.y < self.top or body.y >= self.bottom
+
 
 # Potential solutions for a quadratic equation, can be negative (e.g. time).
 # None if no colision will happen.
@@ -80,15 +83,15 @@ def aim_at_moving_target(
     target: Body) -> Optional[CollisionInfo]:
     """Aim body towards moving body."""
     # TODO: Can we hit targets slightly faster by taking into account the
-    # two sphere radii from the get-go? Can try numeric methods for now...
+    # two sphere radii from the get-go? Could try numeric methods for now...
     times = rocket_target_collision_times(source, target, rocket_speed)
     earliest = None
     for t in times:
-        collision_point = target.position.add(target.velocity.scale(t))
+        target_at_time_t = target.position.add(target.velocity.scale(t))
         collision = CollisionInfo(
-            target=collision_point, delta_t=t, center_collision_t=t,
+            target=target_at_time_t, delta_t=t, center_collision_t=t,
             target_collision_point=None)
-        rocket_dir = collision_point.minus(source).normalized()
+        rocket_dir = target_at_time_t.minus(source).normalized()
         rocket = Body(position=source,
             velocity=rocket_dir.scale(rocket_speed), size=rocket_size)
         t = next_collision_time(rocket, target)  # Find sphere collision time
@@ -97,12 +100,7 @@ def aim_at_moving_target(
         collision.delta_t = t
         if collision.delta_t < 0:
             continue
-        # Fast-forward to the collision point
-        source_end = rocket.advance(collision.delta_t)
-        target_end = target.advance(collision.delta_t)
-        delta = target_end.position.minus(source_end.position).normalized()
-        collision.target_collision_point = source_end.position.add(
-            delta.scale(rocket_size))
+        collision.target_collision_point = collision_point(rocket, target, t)
         if not earliest or collision.delta_t < earliest.delta_t:
             earliest = collision
     return earliest
@@ -123,6 +121,14 @@ def next_collision_time(p: Body, q: Body) -> Optional[float]:
          - 2 * p.position.dot(q.position) - r * r)
     ts = solve_quadratic(a, b, c)
     return min((t for t in ts if t >= 0), default=None) if ts else None
+
+
+def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
+    # Fast-forward to the collision positions
+    p_end = p.advance(collision_time)
+    q_end = q.advance(collision_time)
+    delta = q_end.position.minus(p_end.position).normalized()
+    return p_end.position.add(delta.scale(p.size))
 
 
 def earliest_hit(body: Body, others: List[Body]) -> Optional[float]:

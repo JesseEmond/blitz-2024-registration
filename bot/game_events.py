@@ -36,16 +36,30 @@ class Listener:
         pass
     def on_meteor_spawn(self, events: 'GameEvents', meteor_id: str) -> None:
         pass
+    def on_meteor_split_spawn(self, events: 'GameEvents', meteor_id: str,
+                              expected: 'MeteorSplit') -> None:
+        pass
 
 @dataclasses.dataclass
 class MeteorInfo(Body):
     type_: MeteorType
 
-
 @dataclasses.dataclass
 class RocketInfo(Body):
     pass
 
+@dataclasses.dataclass
+class MeteorSplit:
+    parent: Meteor
+    spawn_time: float
+    spawn_position: Vector
+    position: Vector
+    velocity: Vector
+    type_: MeteorType
+    delta_angle: float
+    # How much time delta_t elapsed after the meteor split appeared, until we
+    # saw it in a game tick?
+    next_tick_delta_t: float
 
 @dataclasses.dataclass
 class Changes:
@@ -72,6 +86,9 @@ class GameEvents:
         self.rockets = {}  # ID to RocketInfo
         self.listeners = []
 
+        # TODO: also include as part of 'self.meteors'
+        self.expected_splits = []
+
         # Set on first tick.
         self.constants = None
         self.bounds = None
@@ -92,15 +109,16 @@ class GameEvents:
         changes = self.detect_changes(game)
         for listener in self.listeners:
             listener.on_before_events(self, game, changes)
+
         rockets = list(game.rockets)
         self.detect_insta_kill_rockets(game.cannon, rockets, changes)
         self.detect_new_rockets(rockets, changes)
-
         self.detect_meteor_hits(game.tick, changes)
-        self.detect_missed_meteors(changes)
         self.detect_meteor_spawns(game.meteors, changes)
+        self.detect_missed_meteors(changes)
 
         self.track_positions(game.meteors, game.rockets)
+
         for listener in self.listeners:
             listener.on_after_events(self, game, changes)
 
@@ -115,8 +133,26 @@ class GameEvents:
 
     def detect_meteor_spawns(
         self, meteors: List[Meteor], changes: Changes) -> None:
-        for meteor in (m for m in meteors if m.id in changes.new_meteors):
-            # TODO: detect explosion vs. new meteor
+        new_meteors = [m for m in meteors if m.id in changes.new_meteors]
+        assert len(new_meteors) >= len(self.expected_splits), (
+            new_meteors, self.expected_splits)
+        for split in self.expected_splits:
+            def _split_distance(meteor: Meteor) -> Tuple[float, float]:
+                angle_diff = abs(meteor.velocity.angle() - split.velocity.angle())
+                angle_dist = round(math.degrees(angle_diff), 1)
+                pos_dist = meteor.position.dist_sq(split.position)
+                return (angle_dist, pos_dist)
+            candidates = [m for m in new_meteors if m.meteorType == split.type_]
+            assert candidates, f'No new meteor of type {split.type_} for split {split}'
+            meteor = min(candidates, key=_split_distance)
+            self.meteors[meteor.id] = MeteorInfo(
+                position=meteor.position, velocity=meteor.velocity,
+                size=meteor.size, type_=meteor.meteorType)
+            for listener in self.listeners:
+                listener.on_meteor_split_spawn(self, meteor.id, split)
+            new_meteors.remove(meteor)
+        self.expected_splits = []
+        for meteor in new_meteors:
             self.meteors[meteor.id] = MeteorInfo(
                 position=meteor.position, velocity=meteor.velocity,
                 size=meteor.size, type_=meteor.meteorType)
@@ -202,9 +238,46 @@ class GameEvents:
             self.on_wiff(rocket_id)
 
     def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> None:
+        rocket = self.rockets[rocket_id]
         for listener in self.listeners:
             listener.on_hit(self, rocket_id, meteor_id, t)
-        # TODO: expect spawns
+        meteor = self.meteors[meteor_id]
+        # Advance to moment of collision
+        delta_t = t - int(t)
+        collision_point = physics.collision_point(rocket, meteor, delta_t)
+        parent_pos = meteor.position.add(meteor.velocity.scale(delta_t))
+        parent = Meteor(id=meteor_id, position=parent_pos,
+                        meteorType=meteor.type_, velocity=meteor.velocity,
+                        size=meteor.size)
+        info = self.meteors[meteor_id]
+        spawn_position = collision_point
+        parent_orientation = parent.velocity.angle()
+        for i, explosion in enumerate(self.constants.meteorInfos[info.type_].explodesInto):
+            explosion_info = self.constants.meteorInfos[explosion.meteorType]
+            orientation = parent_orientation + math.radians(explosion.approximateAngle)
+            velocity = Vector.from_angle(orientation).scale(
+                explosion_info.approximateSpeed)
+            # Advance to expected time when we'll see evidence of the new splits
+            # Note: from reversing the local binary, we know that the splits are
+            # positioned at the collision point after delta_t, but treated
+            # afterwards as if they were there for the whole tick (i.e. +1 vel).
+            next_tick_delta_t = 1.0
+            position = spawn_position.add(velocity.scale(next_tick_delta_t))
+            if not self.bounds.is_out_vertically(position) and position.x >= 0:
+                split = MeteorSplit(
+                    parent, t, spawn_position, position, velocity,
+                    explosion.meteorType,
+                    math.radians(explosion.approximateAngle), next_tick_delta_t)
+                self.expected_splits.append(split)
+            else:  # out of bounds -- this is a miss.
+                spawn_id = f'{meteor_id}-spawn-{i}'
+                # Create a temp meteor for listeners to use, then delete it.
+                self.meteors[spawn_id] = MeteorInfo(position=position,
+                    velocity=velocity, size=explosion_info.size,
+                    type_=explosion.meteorType)
+                for listener in self.listeners:
+                    listener.on_miss(self, spawn_id)
+                del self.meteors[spawn_id]
         del self.rockets[rocket_id]
         del self.meteors[meteor_id]
 
