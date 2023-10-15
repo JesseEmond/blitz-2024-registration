@@ -3,6 +3,12 @@ TODO: some info about how we got here
 TODO: RE context
 TODO: not super straightforward https://reverseengineering.stackexchange.com/questions/30921/decompiling-an-executable-compiled-by-vercel-pkg
 
+TODO: mention https://github.com/LockBlock-dev/pkg-unpacker
+TODO: mention https://www.alibabacloud.com/blog/javascript-bytecode-v8-ignition-instructions_599188
+TODO: mention https://medium.com/dailyjs/understanding-v8s-bytecode-317d46c94775
+
+TODO: explain how https://github.com/vercel/pkg works
+
 TODO: fighting with ghidra.. fighting with v8... fighting with nodejs 18.5.0......
 until I tried pkg-unpacker --run and it didn't work! wrong node version! even if I try with v18.5.0 node....
 

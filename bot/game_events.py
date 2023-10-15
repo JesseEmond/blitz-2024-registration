@@ -242,39 +242,36 @@ class GameEvents:
         for listener in self.listeners:
             listener.on_hit(self, rocket_id, meteor_id, t)
         meteor = self.meteors[meteor_id]
+        info = self.constants.meteorInfos[meteor.type_]
         # Advance to moment of collision
         delta_t = t - int(t)
-        collision_point = physics.collision_point(rocket, meteor, delta_t)
+        explosions = physics.expect_explosions(rocket, meteor, delta_t,
+            info.explodesInto, self.constants)
         parent_pos = meteor.position.add(meteor.velocity.scale(delta_t))
         parent = Meteor(id=meteor_id, position=parent_pos,
                         meteorType=meteor.type_, velocity=meteor.velocity,
                         size=meteor.size)
-        info = self.meteors[meteor_id]
-        spawn_position = collision_point
-        parent_orientation = parent.velocity.angle()
-        for i, explosion in enumerate(self.constants.meteorInfos[info.type_].explodesInto):
-            explosion_info = self.constants.meteorInfos[explosion.meteorType]
-            orientation = parent_orientation + math.radians(explosion.approximateAngle)
-            velocity = Vector.from_angle(orientation).scale(
-                explosion_info.approximateSpeed)
+        for i, explosion in enumerate(explosions):
             # Advance to expected time when we'll see evidence of the new splits
             # Note: from reversing the local binary, we know that the splits are
             # positioned at the collision point after delta_t, but treated
             # afterwards as if they were there for the whole tick (i.e. +1 vel).
             next_tick_delta_t = 1.0
-            position = spawn_position.add(velocity.scale(next_tick_delta_t))
+            avg_velocity = explosion.direction.scale(explosion.avg_speed)
+            position = explosion.spawn_position.add(
+                avg_velocity.scale(next_tick_delta_t))
             if not self.bounds.is_out_vertically(position) and position.x >= 0:
+                angle_delta = avg_velocity.angle() - parent.velocity.angle()
                 split = MeteorSplit(
-                    parent, t, spawn_position, position, velocity,
-                    explosion.meteorType,
-                    math.radians(explosion.approximateAngle), next_tick_delta_t)
+                    parent, t, explosion.spawn_position, position, avg_velocity,
+                    explosion.type_, angle_delta, next_tick_delta_t)
                 self.expected_splits.append(split)
             else:  # out of bounds -- this is a miss.
                 spawn_id = f'{meteor_id}-spawn-{i}'
                 # Create a temp meteor for listeners to use, then delete it.
                 self.meteors[spawn_id] = MeteorInfo(position=position,
-                    velocity=velocity, size=explosion_info.size,
-                    type_=explosion.meteorType)
+                    velocity=avg_velocity, size=explosion.size,
+                    type_=explosion.type_)
                 for listener in self.listeners:
                     listener.on_miss(self, spawn_id)
                 del self.meteors[spawn_id]

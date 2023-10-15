@@ -16,6 +16,19 @@ class CollisionInfo:
     center_collision_t: float
 
 
+@dataclasses.dataclass
+class Explosion:
+    parent: Body
+    spawn_delta_t: float
+    spawn_position: Vector
+    direction: Vector
+    min_speed: float
+    avg_speed: float
+    max_speed: float
+    type_: MeteorType
+    size: float
+
+
 def time_until_out_of_bounds(body: Body, bounds: 'Bounds') -> float:
     """Time until a given unit goes out of bounds (negative if already)."""
     x, y = body.position.components()
@@ -129,6 +142,28 @@ def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
     q_end = q.advance(collision_time)
     delta = q_end.position.minus(p_end.position).normalized()
     return p_end.position.add(delta.scale(p.size))
+
+
+def expect_explosions(
+    rocket: Body, target: Body, delta_t: float,
+    explodes_into: List[ExplosionInfos], constants: Constants) -> List[Explosion]:
+    spawn_position = collision_point(rocket, target, delta_t)
+    parent_orientation = target.velocity.angle()
+    explosions = []
+    for explosion in explodes_into:
+        info = constants.meteorInfos[explosion.meteorType]
+        orientation = parent_orientation + math.radians(
+            explosion.approximateAngle)
+        direction = Vector.from_angle(orientation)
+        avg_speed = info.approximateSpeed
+        # The following was found by reverse-engineering the local challenge
+        # binary, but could have been found empirically from our logs, too.
+        min_speed = avg_speed * 0.8
+        max_speed = avg_speed * 1.2
+        explosions.append(Explosion(
+            target, delta_t, spawn_position, direction, min_speed, avg_speed,
+            max_speed, explosion.meteorType, info.size))
+    return explosions
 
 
 def earliest_hit(body: Body, others: List[Body]) -> Optional[float]:

@@ -37,6 +37,8 @@ class Bot:
             print(s)
 
     def get_next_move(self, game: GameMessage):
+        assert not game.lastTickErrors,\
+            f'Errors during last tick : {game.lastTickErrors}'
         start_time = time.time()
         self.info(f"Playing tick {game.tick}. Score: {game.score}")
 
@@ -60,17 +62,23 @@ class Bot:
         target = self.picker.pick_target(
             game.cannon, game.rockets, game.meteors, unassigned_ids,
             self.constants, self.bounds, game.tick)
-        if not target:
-            self.info('No target to shoot at!')
-            return actions
-        actions.append(LookAtAction(target=target.aim_point))
+        do_shoot = False
+        if target:
+            actions.append(LookAtAction(target=target.aim_point))
 
-        if not game.cannon.cooldown:
-            self.info(f'Shooting!')
-            self.tracker.assign_target(target.meteor_id, target.hit_time)
+            if game.cannon.cooldown == 0:
+                self.info(f'Shooting!')
+                self.tracker.assign_target(target.meteor_id, target.hit_time)
+                do_shoot = True
+            else:
+                self.info(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
+        else:  # no target
+            self.info('No target to shoot at!')
+
+        if do_shoot:
             actions.append(ShootAction())
-        else:
-            self.info(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')
+        elif game.cannon.cooldown == 0:
+            self.stats.record_idle_tick()
 
         tick_time = time.time() - start_time
         self.stats.record_tick_time(tick_time)

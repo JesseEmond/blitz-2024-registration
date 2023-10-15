@@ -28,6 +28,7 @@ class Stats(game_events.Listener):
         self.split_speed_multipliers = []
         self.split_spawn_pos_dists = []
         self.split_pos_dists = []
+        self.idle_ticks = 0
 
     def on_first_tick(self, events: game_events.GameEvents,
                       constants: Constants, bounds) -> None:
@@ -135,6 +136,11 @@ class Stats(game_events.Listener):
     def record_tick_time(self, time: float) -> None:
         self.tick_times.append(time)
 
+    def record_idle_tick(self) -> None:
+        """Tick where the cannon was off cooldown, but we didn't shoot."""
+        self.idle_ticks += 1
+        print('[IDLE] Not shooting...')
+
     def print_stats(self) -> None:
         potential = self.score + self.lost_score
         print(f'Final score:\t\t{self.score} points')
@@ -153,6 +159,9 @@ class Stats(game_events.Listener):
             print('All shots hit.')
         else:
             print(f'[!!!] {self.wiffs} SHOT(S) MISSED [!!!]')
+
+        print()
+        print(f'Ticks spent idle: {self.idle_ticks}')
 
         print()
         print('Hit & passed-through breakdown')
