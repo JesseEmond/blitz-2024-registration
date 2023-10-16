@@ -52,7 +52,8 @@ class TargetPicker:
                 continue
             sim = simulation.Simulation()
             sim_rockets = rockets + [rocket]
-            hits = sim.simulate(bounds, sim_rockets, meteors, expected_spawns)
+            hits = sim.simulate(tick, bounds, sim_rockets, meteors,
+                                expected_spawns)
             my_hit = next((hit for hit in hits if hit.rocket_id == rocket.id),
                           None)
             if not my_hit or my_hit.meteor.id != target.meteor.id:

@@ -1,5 +1,4 @@
 # TODO:
-# Sim: Consider predicted explosions in hits
 # When refreshing assignments, consider explosions hit
 # When refreshing assignments, handle unexpected hits -- remove old predicted explosions
 # Add predicted explosions to targetable
@@ -136,14 +135,14 @@ class TargetTracker(game_events.Listener):
         # TODO: handle expected explosions
         sim = simulation.Simulation()
         seen_rockets = set()
-        hits = sim.simulate(self.bounds, game.rockets,
-                            game.meteors, self.predicted_spawns)
+        hits = sim.simulate(game.tick, self.bounds, game.rockets,
+                            game.meteors, self.predicted_spawns.values())
         for hit in hits:
             seen_rockets.add(hit.rocket_id)
             target = self.rocket_targets.get(hit.rocket_id)
             target_id = target.meteor.id if target else None
             if target_id != hit.meteor.id:
-                new_target = Target(hit.meteor, game.tick + hit.time)
+                new_target = Target(hit.meteor, game.tick + hit.delta_t)
                 rocket = next(r for r in game.rockets if r.id == hit.rocket_id)
                 self.change_target(rocket, new_target)
                 self.stats.record_changed_target(hit.rocket_id, target_id,

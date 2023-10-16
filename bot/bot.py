@@ -58,7 +58,7 @@ class Bot:
 
         pick = self.picker.pick_target(
             game.cannon, game.rockets, game.meteors,
-            self.tracker.predicted_spawns,
+            self.tracker.predicted_spawns.values(),
             self.tracker.targetable_meteors(game.meteors),
             self.constants, self.bounds, game.tick)
         do_shoot = False
