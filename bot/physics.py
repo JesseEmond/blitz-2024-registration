@@ -141,13 +141,13 @@ def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
     return p_end.position.add(delta.scale(p.size))
 
 
-def expect_explosions(
-    rocket: Body, target: Meteor, delta_t: float,
-    explodes_into: List[ExplosionInfos], constants: Constants) -> List[Spawn]:
+def expect_explosions(rocket: Body, target: Meteor, delta_t: float,
+                      constants: Constants) -> List[Spawn]:
     spawn_position = collision_point(rocket, target, delta_t)
     parent_orientation = target.velocity.angle()
     parent = target.advance(delta_t)
     explosions = []
+    explodes_into = constants.meteorInfos[target.meteorType].explodesInto
     for i, explosion in enumerate(explodes_into):
         info = constants.meteorInfos[explosion.meteorType]
         orientation = parent_orientation + math.radians(

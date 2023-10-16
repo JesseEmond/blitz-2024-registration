@@ -230,7 +230,7 @@ class GameEvents:
         # Advance to moment of collision
         delta_t = t - int(t)
         explosions = physics.expect_explosions(rocket, meteor, delta_t,
-            info.explodesInto, self.constants)
+                                               self.constants)
         for i, explosion in enumerate(explosions):
             # Advance to expected time when we'll see evidence of the new splits
             # Note: from reversing the local binary, we know that the splits are

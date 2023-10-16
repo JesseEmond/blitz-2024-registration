@@ -11,6 +11,7 @@ import target_tracker
 class PickedTarget:
     target: target_tracker.Target
     aim_point: Vector
+    rocket: Body
 
 
 class TargetPicker:
@@ -58,7 +59,7 @@ class TargetPicker:
                 self.info('Would hit other meteor before reaching target: {my_hit}')
                 continue
             target.hit_time = hit_time
-            return PickedTarget(target, collision.target)
+            return PickedTarget(target, collision.target, rocket)
         return None
 
     def rank_candidates(
