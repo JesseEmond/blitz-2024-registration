@@ -52,20 +52,20 @@ class Stats(game_events.Listener):
     def on_hit(self, events: game_events.GameEvents, rocket_id: str,
                meteor_id: str, t: float) -> None:
         meteor = events.meteors[meteor_id]
-        info = self.constants.meteorInfos[meteor.type_]
-        print(f'[HIT] Rocket {rocket_id} hit {meteor.type_} meteor {meteor_id} '
+        info = self.constants.meteorInfos[meteor.meteorType]
+        print(f'[HIT] Rocket {rocket_id} hit {meteor.meteorType} meteor {meteor_id} '
               f'at time {t:.2f} for {info.score} points!')
         self.score += info.score
-        self.hit_stats[meteor.type_] += 1
+        self.hit_stats[meteor.meteorType] += 1
 
     def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
         meteor = events.meteors[meteor_id]
-        info = self.constants.meteorInfos[meteor.type_]
-        total_score = self.constants.potential_score(meteor.type_)
-        print(f'[MISS] {meteor.type_} meteor {meteor_id} got away! '
+        info = self.constants.meteorInfos[meteor.meteorType]
+        total_score = self.constants.potential_score(meteor.meteorType)
+        print(f'[MISS] {meteor.meteorType} meteor {meteor_id} got away! '
               f'Worth {info.score} points ({total_score} total)')
         self.lost_score += total_score
-        self.miss_stats[meteor.type_] += 1
+        self.miss_stats[meteor.meteorType] += 1
 
     def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
@@ -80,42 +80,43 @@ class Stats(game_events.Listener):
     def on_meteor_spawn(self, events: game_events.GameEvents,
                         meteor_id: str) -> None:
         meteor = events.meteors[meteor_id]
-        print(f'[SPAWN] New {meteor.type_} meteor {meteor_id}')
+        print(f'[SPAWN] New {meteor.meteorType} meteor {meteor_id}')
 
     def on_meteor_split_spawn(
         self, events: game_events.GameEvents, meteor_id: str,
         split: game_events.MeteorSplit) -> None:
         meteor = events.meteors[meteor_id]
-        print(f'[SPLIT] Parent {split.parent.meteorType} meteor '
-              f'{split.parent.id} split into {meteor.type_} meteor {meteor_id}')
+        print(f'[SPLIT] Parent {split.spawn.parent.meteorType} meteor '
+              f'{split.spawn.parent.id} split into {meteor.meteorType} meteor '
+              f'{meteor_id}')
         print('Position:')
-        print(f'  predicted: {split.position.pprint()}')
+        print(f'  predicted: {split.next_tick_position.pprint()}')
         print(f'  actual:    {meteor.position.pprint()}')
-        self.split_pos_dists.append(split.position.dist(meteor.position))
+        self.split_pos_dists.append(split.next_tick_position.dist(meteor.position))
         print('Spawn position:')
         inferred_actual_spawn = meteor.advance(-split.next_tick_delta_t).position
-        print(f'  predicted: {split.spawn_position.pprint()}')
+        print(f'  predicted: {split.spawn.position.pprint()}')
         print(f'  actual:    {inferred_actual_spawn.pprint()}')
         self.split_spawn_pos_dists.append(
-            split.spawn_position.dist(inferred_actual_spawn))
+            split.spawn.position.dist(inferred_actual_spawn))
         def _print_vel(vel) -> str:
             return (f'{math.degrees(vel.angle()):7.2f}°@{vel.len():5.2f}\t'
                         f'({vel.x:.2f},{vel.y:.2f})')
         print('Velocity:')
-        print(f'  predicted: {_print_vel(split.velocity)}')
+        print(f'  predicted: {_print_vel(split.spawn.velocity)}')
         print(f'  actual:    {_print_vel(meteor.velocity)}')
         print('Angle:')
-        angle_delta = center_angle(meteor.velocity.angle() - split.parent.velocity.angle())
+        angle_delta = center_angle(meteor.velocity.angle() - split.spawn.parent.velocity.angle())
         print(f'  predicted delta: {print_angle(split.delta_angle)}')
         print(f'  actual delta:    {print_angle(angle_delta)}')
-        print(f'Parent pos: {split.parent._print_pos()} vel: {split.parent._print_vel()}')
+        print(f'Parent pos: {split.spawn.parent._print_pos()} vel: {split.spawn.parent._print_vel()}')
         self.split_angle_deltas.append(center_angle(split.delta_angle - angle_delta))
-        len_scale = meteor.velocity.len() / split.velocity.len()
+        len_scale = meteor.velocity.len() / split.spawn.velocity.len()
         print(f'Split speed had a speed multiplier of: {len_scale:.2f}')
         self.split_speed_multipliers.append(len_scale)
         self.asserter.expect(
             self.split_spawn_pos_dists[-1] < 0.001,
-            f'Bad spawn prediction: predicted {split.spawn_position} vs {inferred_actual_spawn}\nmeteor: {meteor}\nsplit: {split}')
+            f'Bad spawn prediction: predicted {split.spawn.position} vs {inferred_actual_spawn}\nmeteor: {meteor}\nsplit: {split}')
 
     def record_wrong_target(self, rocket_id: str, target: Optional[str],
                             meteor_id: str) -> None:

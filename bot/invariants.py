@@ -13,7 +13,7 @@ class Invariants(game_events.Listener):
                         meteor_id: str) -> None:
         meteor = events.meteors[meteor_id]
         self.asserter.expect(
-            meteor.type_ == MeteorType.Large,
+            meteor.meteorType == MeteorType.Large,
             'Non-large meteor spawned, likely bug in split detection logic: '
             f'{meteor}')
 

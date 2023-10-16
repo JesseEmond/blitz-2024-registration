@@ -56,19 +56,18 @@ class Bot:
         if not game.meteors:
             self.info('No meteors to shoot at!')
 
-        assigned_ids = self.tracker.targeted_meteors()
-        meteor_ids = {m.id for m in game.meteors}
-        unassigned_ids = meteor_ids - assigned_ids
-        target = self.picker.pick_target(
-            game.cannon, game.rockets, game.meteors, unassigned_ids,
+        pick = self.picker.pick_target(
+            game.cannon, game.rockets, game.meteors,
+            self.tracker.expected_spawns,
+            self.tracker.targetable_meteors(game.meteors),
             self.constants, self.bounds, game.tick)
         do_shoot = False
-        if target:
-            actions.append(LookAtAction(target=target.aim_point))
+        if pick:
+            actions.append(LookAtAction(target=pick.aim_point))
 
             if game.cannon.cooldown == 0:
                 self.info(f'Shooting!')
-                self.tracker.assign_target(target.meteor_id, target.hit_time)
+                self.tracker.set_next_rocket_target(pick.target)
                 do_shoot = True
             else:
                 self.info(f'Cannon on cooldown, waiting {game.cannon.cooldown}...')

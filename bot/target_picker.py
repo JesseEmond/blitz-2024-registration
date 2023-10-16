@@ -5,12 +5,12 @@ from game_message import *
 
 import physics
 import simulation
+import target_tracker
 
 @dataclasses.dataclass
-class Target:
-    meteor_id: str
+class PickedTarget:
+    target: target_tracker.Target
     aim_point: Vector
-    hit_time: float
 
 
 class TargetPicker:
@@ -19,18 +19,16 @@ class TargetPicker:
         self.verbose = verbose
 
     def pick_target(
-        self, cannon: Cannon, rockets: List[Projectile], meteors: List[Meteor],
-        unassigned_ids: Set[str], constants: Constants, bounds: physics.Bounds,
-        tick: int) -> Optional[Target]:
-        if not meteors:
-            self.info('No meteors to shoot at')
-        candidates = self.get_candidates(meteors, unassigned_ids)
-        if not candidates:
+        self, cannon: Cannon, rockets: List[Projectile],
+        meteors: List[Meteor], expected_spawns: List[physics.Spawn],
+        targets: List[target_tracker.Target], constants: Constants,
+        bounds: physics.Bounds, tick: int) -> Optional[PickedTarget]:
+        if not targets:
             self.info('No available targets to shoot at')
-        self.rank_candidates(candidates, constants, bounds)
-        for target in candidates:
-            self.info(f'Considering target: {target.id}')
-            collision = self.aim_ahead(cannon, target, constants)
+        self.rank_candidates(targets, constants, bounds)
+        for target in targets:
+            self.info(f'Considering target: {target.meteor.id}')
+            collision = self.aim_ahead(cannon, target.meteor, constants)
             if not collision:
                 self.info('Can not reach target (no collision found).')
                 continue
@@ -43,7 +41,7 @@ class TargetPicker:
                 id='new_rocket', position=cannon.position,
                 velocity=rocket_dir.scale(constants.rockets.speed),
                 size=constants.rockets.size)
-            if (bounds.is_out(target.advance(collision.delta_t)) and
+            if (bounds.is_out(target.meteor.advance(collision.delta_t)) and
                 bounds.is_out(rocket.advance(collision.delta_t))):
                 self.info('Can not reach aim target (off-screen/past us).')
                 continue
@@ -53,31 +51,27 @@ class TargetPicker:
                 continue
             sim = simulation.Simulation()
             sim_rockets = rockets + [rocket]
-            hits = sim.simulate(bounds, sim_rockets, meteors)
+            hits = sim.simulate(bounds, sim_rockets, meteors, expected_spawns)
             my_hit = next((hit for hit in hits if hit.rocket_id == rocket.id),
                           None)
-            if not my_hit or my_hit.meteor_id != target.id:
+            if not my_hit or my_hit.meteor.id != target.meteor.id:
                 self.info('Would hit other meteor before reaching target: {my_hit}')
                 continue
-
-            return Target(target.id, collision.target, hit_time)
+            target.hit_time = hit_time
+            return PickedTarget(target, collision.target)
         return None
 
-    def get_candidates(self, meteors: List[Meteor],
-                       unassigned_ids: Set[str]) -> List[Projectile]:
-        # TODO: consider future spawns
-        return [m for m in meteors if m.id in unassigned_ids]
-
-    def rank_candidates(self, candidates: List[Meteor], constants: Constants,
-                        bounds: physics.Bounds) -> None:
-        def _score(meteor: Meteor) -> float:
-            score = constants.meteorInfos[meteor.meteorType].score
-            time = physics.time_until_out_of_bounds(meteor, bounds)
+    def rank_candidates(
+        self, targets: List[target_tracker.Target], constants: Constants,
+        bounds: physics.Bounds) -> None:
+        def _score(target: target_tracker.Target) -> float:
+            score = constants.meteorInfos[target.meteor.meteorType].score
+            time = physics.time_until_out_of_bounds(target.meteor, bounds)
             # Prio:
             # - higher score (-score)
             # - time left until it exits the area (more urgent)
             return (-score, time)
-        candidates.sort(key=_score)
+        targets.sort(key=_score)
 
     def aim_ahead(self, cannon: Cannon, target: Projectile,
                   constants: Constants) -> Optional[physics.CollisionInfo]:

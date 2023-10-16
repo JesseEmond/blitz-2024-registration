@@ -7,7 +7,7 @@ import physics
 @dataclasses.dataclass
 class Hit:
     time: float
-    meteor_id: str
+    meteor: Meteor
     rocket_id: str
 
 
@@ -16,10 +16,12 @@ class Simulation:
     def __init__(self) -> None:
         self.rocket_meteor_cache = {}
 
-    def simulate(self, bounds: physics.Bounds, rockets: List[Projectile],
-                 meteors: List[Meteor]) -> List[Hit]:
+    def simulate(
+        self, bounds: physics.Bounds, rockets: List[Projectile],
+        meteors: List[Meteor], spawns: List[physics.Spawn]) -> List[Hit]:
         rockets = list(rockets)
         meteors = list(meteors)
+        # TODO: handle spawns
         hits = []
         while rockets:
             next_hit = None
@@ -34,13 +36,12 @@ class Simulation:
                         continue
                     any_hit = True
                     if not next_hit or time < next_hit.time:
-                        next_hit = Hit(time, meteor.id, rocket.id)
+                        next_hit = Hit(time, meteor, rocket.id)
                 if not any_hit:
                     rockets.remove(rocket)
             if next_hit:
                 # TODO: handle spawns
-                meteor = next(m for m in meteors if m.id == next_hit.meteor_id)
-                meteors.remove(meteor)
+                meteors.remove(next_hit.meteor)
                 rocket = next(r for r in rockets if r.id == next_hit.rocket_id)
                 rockets.remove(rocket)
                 hits.append(next_hit)

@@ -17,16 +17,13 @@ class CollisionInfo:
 
 
 @dataclasses.dataclass
-class Explosion:
-    parent: Body
+class Spawn(Meteor):
+    # 'position' is the spawn position
     spawn_delta_t: float
-    spawn_position: Vector
-    direction: Vector
-    min_speed: float
-    avg_speed: float
-    max_speed: float
-    type_: MeteorType
-    size: float
+    # Velocity multiplier range
+    min_multiplier: float
+    max_multiplier: float
+    parent: Optional[Meteor]
 
 
 def time_until_out_of_bounds(body: Body, bounds: 'Bounds') -> float:
@@ -145,24 +142,28 @@ def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
 
 
 def expect_explosions(
-    rocket: Body, target: Body, delta_t: float,
-    explodes_into: List[ExplosionInfos], constants: Constants) -> List[Explosion]:
+    rocket: Body, target: Meteor, delta_t: float,
+    explodes_into: List[ExplosionInfos], constants: Constants) -> List[Spawn]:
     spawn_position = collision_point(rocket, target, delta_t)
     parent_orientation = target.velocity.angle()
+    parent = target.advance(delta_t)
     explosions = []
-    for explosion in explodes_into:
+    for i, explosion in enumerate(explodes_into):
         info = constants.meteorInfos[explosion.meteorType]
         orientation = parent_orientation + math.radians(
             explosion.approximateAngle)
-        direction = Vector.from_angle(orientation)
         avg_speed = info.approximateSpeed
+        velocity = Vector.from_angle(orientation).scale(avg_speed)
         # The following was found by reverse-engineering the local challenge
         # binary, but could have been found empirically from our logs, too.
-        min_speed = avg_speed * 0.8
-        max_speed = avg_speed * 1.2
-        explosions.append(Explosion(
-            target, delta_t, spawn_position, direction, min_speed, avg_speed,
-            max_speed, explosion.meteorType, info.size))
+        min_multiplier = 0.8
+        max_multiplier = 1.2
+        spawn_id = f'{target.id}-expl{i}'
+        explosions.append(Spawn(
+            id=spawn_id, position=spawn_position, velocity=velocity,
+            meteorType=explosion.meteorType, size=info.size,
+            parent=parent, spawn_delta_t=delta_t, min_multiplier=min_multiplier,
+            max_multiplier=max_multiplier))
     return explosions
 
 

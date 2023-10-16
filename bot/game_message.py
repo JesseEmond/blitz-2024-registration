@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
 import math
 from enum import Enum, unique
 from typing import Dict, List, Tuple
@@ -17,7 +17,7 @@ def center_angle(radians: float) -> float:
     return radians
 
 
-@dataclass
+@dataclasses.dataclass
 class GameMessage:
     type: str
     tick: int
@@ -53,7 +53,7 @@ class GameMessage:
         print(f'World is {world.width}x{world.height}')
 
 
-@dataclass(eq=True, frozen=True)
+@dataclasses.dataclass(eq=True, frozen=True)
 class Vector:
    x: float 
    y: float 
@@ -105,14 +105,14 @@ class Vector:
        return self.x, self.y
 
 
-@dataclass
+@dataclasses.dataclass
 class Cannon:
     position: Vector
     orientation: float
     cooldown: int
 
 
-@dataclass
+@dataclasses.dataclass
 class Body:
     position: Vector
     velocity: Vector
@@ -123,7 +123,7 @@ class Body:
 
     def advance(self, delta_t: float) -> 'Body':
         new_pos = self.position.add(self.velocity.scale(delta_t))
-        return Body(position=new_pos, velocity=self.velocity, size=self.size)
+        return dataclasses.replace(self, position=new_pos)
 
     def _print_pos(self) -> str:
         return self.position.pprint()
@@ -135,12 +135,12 @@ class Body:
 
 
 
-@dataclass
+@dataclasses.dataclass
 class Projectile(Body):
     id: str
 
 
-@dataclass
+@dataclasses.dataclass
 class Meteor(Projectile):
     meteorType: MeteorType
 
@@ -152,7 +152,7 @@ class MeteorType(str, Enum):
     Small = "SMALL"
 
 
-@dataclass
+@dataclasses.dataclass
 class Constants:
     world: WorldConstants
     rockets: RocketsConstants
@@ -164,19 +164,19 @@ class Constants:
         return info.score + sum(
             self.potential_score(e.meteorType) for e in info.explodesInto)
 
-@dataclass
+@dataclasses.dataclass
 class WorldConstants:
     width: int
     height: int
 
 
-@dataclass
+@dataclasses.dataclass
 class RocketsConstants:
     speed: float
     size: float
 
 
-@dataclass
+@dataclasses.dataclass
 class MeteorInfos:
     score: float
     size: float
@@ -184,7 +184,7 @@ class MeteorInfos:
     explodesInto: List[ExplosionInfos]
 
 
-@dataclass
+@dataclasses.dataclass
 class ExplosionInfos:
     meteorType: MeteorType
     approximateAngle: float

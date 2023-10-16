@@ -11,8 +11,9 @@ import stats
 
 @dataclasses.dataclass
 class Target:
-    id_: str
-    hit_time: float
+    meteor: Meteor
+    hit_time: Optional[float]
+    # TODO: spawn time
 
 class TargetTracker(game_events.Listener):
 
@@ -23,6 +24,7 @@ class TargetTracker(game_events.Listener):
         self.bounds = None
 
         self.rocket_targets = {}
+        self.expected_spawns = {}
         self.next_rocket_target = None
 
     def on_first_tick(self, events: game_events.GameEvents,
@@ -38,14 +40,18 @@ class TargetTracker(game_events.Listener):
             f'New shot rocket {rocket_id} has no target picked'):
             return
         self.rocket_targets[rocket_id] = target
-        print(f'(aim) rocket {rocket_id} to meteor {target.id_}')
+        print(f'(aim) rocket {rocket_id} to meteor {target.meteor.id}')
 
     def on_hit(self, events: game_events.GameEvents, rocket_id: str,
                meteor_id: str, collision_time: float) -> None:
         target = self.rocket_targets.get(rocket_id)
-        wrong_target = not target or target.id_ != meteor_id
+        wrong_target = not target or target.meteor.id != meteor_id
         if wrong_target:
-            target_id = target.id_ if target else None
+            target_id = target.meteor.id if target else None
+            # TODO: log # planned explosions that are impacted by this, update
+            # their assignments if relevant
+            assert meteor_id not in self.expected_spawns
+            assert target_id not in self.expected_spawns
             self.stats.record_wrong_target(rocket_id, target_id, meteor_id)
             prev_assignment = self.get_assignment(meteor_id)
             # TODO: remove pedantic once we can guarantee this won't happen
@@ -62,34 +68,41 @@ class TargetTracker(game_events.Listener):
     def refresh_assignments(self, game: GameMessage) -> None:
         sim = simulation.Simulation()
         seen_rockets = set()
-        hits = sim.simulate(self.bounds, game.rockets, game.meteors)
+        # TODO: handle expected explosions
+        hits = sim.simulate(self.bounds, game.rockets,
+                            game.meteors, self.expected_spawns)
         for hit in hits:
             seen_rockets.add(hit.rocket_id)
             target = self.rocket_targets.get(hit.rocket_id)
-            target_id = target.id_ if target else None
-            if target_id != hit.meteor_id:
+            target_id = target.meteor.id if target else None
+            if target_id != hit.meteor.id:
                 self.rocket_targets[hit.rocket_id] = Target(
-                    hit.meteor_id, game.tick + hit.time)
+                    hit.meteor, game.tick + hit.time)
                 self.stats.record_changed_target(hit.rocket_id, target_id,
-                                                 hit.meteor_id)
+                                                 hit.meteor.id)
         missing_rockets = set(self.rocket_targets.keys()) - seen_rockets
         for rocket_id in missing_rockets:
-            target_id = self.rocket_targets[rocket_id].id_
+            target_id = self.rocket_targets[rocket_id].meteor.id
             self.stats.record_changed_target(rocket_id, target_id, None)
             del self.rocket_targets[rocket_id]
 
     def get_assignment(self, meteor_id: str) -> Optional[str]:
         return next(
             (rocket_id for rocket_id, target in self.rocket_targets.items()
-             if target.id_ == meteor_id),
+             if target.meteor.id == meteor_id),
             None)
 
-    def targeted_meteors(self) -> Set[str]:
-        return {target.id_ for target in self.rocket_targets.values()}
+    def targetable_meteors(self, meteors: List[Meteor]) -> List[Target]:
+        targeted = {target.meteor.id for target in self.rocket_targets.values()}
+        # TODO: include expected explosions
+        return [Target(meteor, hit_time=None) for meteor in meteors
+                if meteor.id not in targeted]
 
-    def assign_target(self, meteor_id: str, hit_time: float) -> None:
+    def set_next_rocket_target(self, target: Target) -> None:
+        assert target.hit_time is not None, target
         self.asserter.expect(
             self.next_rocket_target is None,
-            f'Assigning target meteor {meteor_id} @ {hit_time}, but already '
-            f'had a target: {self.next_rocket_target}')
-        self.next_rocket_target = Target(meteor_id, hit_time)
+            f'Assigning target meteor {target.meteor.id} @ {target.hit_time}, '
+            'but already had a target: {self.next_rocket_target}')
+        self.next_rocket_target = target
+        # TODO: add expected explosions
