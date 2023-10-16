@@ -74,7 +74,7 @@ class GameEvents:
         self.rockets = {}  # ID to Rocket
         self.listeners = []
 
-        # TODO: also include as part of 'self.meteors'
+        self.current_tick = 0
         self.expected_splits = []
 
         # Set on first tick.
@@ -91,6 +91,10 @@ class GameEvents:
             listener.on_first_tick(self, constants, bounds)
 
     def update(self, game: GameMessage) -> None:
+        self.previous_tick = self.current_tick
+        self.current_tick = game.tick
+        assert self.previous_tick + 1 == self.current_tick, \
+            (self.previous_tick, self.current_tick)
         for listener in self.listeners:
             listener.on_tick(self, game)
 
@@ -228,9 +232,9 @@ class GameEvents:
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.meteorType]
         # Advance to moment of collision
-        delta_t = t - int(t)
-        explosions = physics.expect_explosions(rocket, meteor, delta_t,
-                                               self.constants)
+        prev_tick = int(t)
+        explosions = physics.expect_explosions(
+            rocket, meteor, prev_tick, t, self.constants)
         for i, explosion in enumerate(explosions):
             # Advance to expected time when we'll see evidence of the new splits
             # Note: from reversing the local binary, we know that the splits are

@@ -18,7 +18,7 @@ class Simulation:
 
     def simulate(
         self, bounds: physics.Bounds, rockets: List[Projectile],
-        meteors: List[Meteor], spawns: List[physics.Spawn]) -> List[Hit]:
+        meteors: List[Meteor], predicted_spawns: List[physics.Spawn]) -> List[Hit]:
         rockets = list(rockets)
         meteors = list(meteors)
         # TODO: handle spawns

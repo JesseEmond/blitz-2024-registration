@@ -58,11 +58,14 @@ class TargetTracker(game_events.Listener):
             f'Unpredicted split spawn: {expected.spawn.id}, '
             f'known: {list(self.predicted_spawns.keys())}'):
             return
+        predicted = self.predicted_spawns[expected.spawn.id]
+        delta_t = predicted.spawn_time - events.previous_tick
+        self.asserter.expect(
+            0 <= delta_t < 1.0,
+            f'Predicted spawn for {predicted.id} was too off: '
+            f'{predicted.spawn_time} vs {events.previous_tick}')
         rocket_id = self.get_assignment(expected.spawn.id)
-        if rocket_id is not None:
-            # TODO: impl that
-            self.stats.record_switch_to_real_spawn(rocket_id,
-                self.predicted_spawns[expected.spawn.id], meteor)
+        if rocket_id is not None:  # Swap target to the real deal!
             self.rocket_targets[rocket_id] = meteor
         del self.predicted_spawns[expected.spawn.id]
 
@@ -100,8 +103,10 @@ class TargetTracker(game_events.Listener):
             self.rocket_targets[rocket.id] = new_target
             # Regenerate the expected explosions
             self.dont_expect_spawns(new_target.meteor.id)
+            delta_t = new_target.hit_time  # TODO this is wrong
             explosions = physics.expect_explosions(
-                rocket, new_target.meteor, new_target.hit_time, self.constants)
+                rocket, new_target.meteor, new_target.hit_time, delta_t,
+                self.constants)
             for explosion in explosions:
                 print(f'(EXPL) Predict meteor {new_target.meteor.id} to explode '
                       f'into {explosion.id}')
@@ -167,13 +172,16 @@ class TargetTracker(game_events.Listener):
     def set_next_rocket_target(
         self, target: Target, explosions: List[physics.Spawn]) -> None:
         assert target.hit_time is not None, target
+        print(f'(aim) shooting meteor {target.meteor.id}, hit at '
+              f't={target.hit_time:.2f}')
         self.asserter.expect(
             self.next_rocket_target is None,
             f'Assigning target meteor {target.meteor.id} @ {target.hit_time}, '
             'but already had a target: {self.next_rocket_target}')
         self.next_rocket_target = target
         for explosion in explosions:
-            print(f'(EXPL) Predicting {target.meteor.id} explosion {explosion.id}')
+            print(f'(EXPL) Predicting {target.meteor.id} explosion '
+                  f'{explosion.id} at t={explosion.spawn_time:.2f}')
             # TODO: turn into expect
             assert explosion.id not in self.predicted_spawns, \
                 (explosion, self.predicted_spawns)

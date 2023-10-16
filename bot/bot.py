@@ -68,8 +68,8 @@ class Bot:
             if game.cannon.cooldown == 0:
                 self.info(f'Shooting!')
                 explosions = physics.expect_explosions(
-                    pick.rocket, pick.target.meteor, pick.target.hit_time,
-                    self.constants)
+                    pick.rocket, pick.target.meteor, self.events.previous_tick,
+                    pick.target.hit_time, self.constants)
                 self.tracker.set_next_rocket_target(pick.target, explosions)
                 do_shoot = True
             else:

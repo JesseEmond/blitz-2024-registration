@@ -18,8 +18,8 @@ class CollisionInfo:
 
 @dataclasses.dataclass
 class Spawn(Meteor):
-    # 'position' is the spawn position
-    spawn_delta_t: float
+    # Note: 'position' is the spawn position
+    spawn_time: float
     # Velocity multiplier range
     min_multiplier: float
     max_multiplier: float
@@ -141,8 +141,11 @@ def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
     return p_end.position.add(delta.scale(p.size))
 
 
-def expect_explosions(rocket: Body, target: Meteor, delta_t: float,
-                      constants: Constants) -> List[Spawn]:
+def expect_explosions(
+    rocket: Body, target: Meteor, current_time: float,
+    spawn_time: float, constants: Constants) -> List[Spawn]:
+    delta_t = spawn_time - current_time
+    assert delta_t >= 0, delta_t
     spawn_position = collision_point(rocket, target, delta_t)
     parent_orientation = target.velocity.angle()
     parent = target.advance(delta_t)
@@ -162,7 +165,7 @@ def expect_explosions(rocket: Body, target: Meteor, delta_t: float,
         explosions.append(Spawn(
             id=spawn_id, position=spawn_position, velocity=velocity,
             meteorType=explosion.meteorType, size=info.size,
-            parent=parent, spawn_delta_t=delta_t, min_multiplier=min_multiplier,
+            parent=parent, spawn_time=spawn_time, min_multiplier=min_multiplier,
             max_multiplier=max_multiplier))
     return explosions
 
