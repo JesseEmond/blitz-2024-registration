@@ -18,8 +18,8 @@ class Stats(game_events.Listener):
         self.score = 0
         self.lost_score = 0
         self.wiffs = 0
-        self.hit_stats = {type_: 0 for type_ in MeteorType}
-        self.miss_stats = {type_: 0 for type_ in MeteorType}
+        self.hit_stats = {type_: 0 for type_ in iter(MeteorType)}
+        self.miss_stats = {type_: 0 for type_ in iter(MeteorType)}
         self.wrong_targets = 0
         self.target_changes = 0
         self.hit_time_deltas = []
@@ -170,7 +170,7 @@ class Stats(game_events.Listener):
         total_misses = sum(self.miss_stats.values())
         pct = total_hits / (total_hits + total_misses) * 100
         print(f'All: {total_hits}/{total_hits + total_misses} ({pct:.1f}%)')
-        for type_ in MeteorType:
+        for type_ in iter(MeteorType):
             hits, miss = self.hit_stats[type_], self.miss_stats[type_]
             pct = hits / (hits + miss) * 100
             miss_potential = miss * self.constants.potential_score(type_)

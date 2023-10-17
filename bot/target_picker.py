@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List, Optional, Set
+from typing import Iterable, List, Optional, Set
 
 from game_message import *
 
@@ -21,15 +21,15 @@ class TargetPicker:
 
     def pick_target(
         self, cannon: Cannon, rockets: List[Projectile],
-        meteors: List[Meteor], expected_spawns: List[physics.Spawn],
+        meteors: List[Meteor], expected_spawns: Iterable[physics.SpawnableMeteor],
         targets: List[target_tracker.Target], constants: Constants,
         bounds: physics.Bounds, tick: int) -> Optional[PickedTarget]:
         if not targets:
             self.info('No available targets to shoot at')
-        self.rank_candidates(targets, constants, bounds)
+        self.rank_candidates(tick, targets, constants, bounds)
         for target in targets:
-            self.info(f'Considering target: {target.meteor.id}')
-            collision = self.aim_ahead(cannon, target.meteor, constants)
+            self.info(f'Considering target: {target.victim.id}')
+            collision = self.aim_ahead(cannon, target.victim, constants)
             if not collision:
                 self.info('Can not reach target (no collision found).')
                 continue
@@ -42,7 +42,7 @@ class TargetPicker:
                 id='new_rocket', position=cannon.position,
                 velocity=rocket_dir.scale(constants.rockets.speed),
                 size=constants.rockets.size)
-            if (bounds.is_out(target.meteor.advance(collision.delta_t)) and
+            if (bounds.is_out(target.victim.advance(collision.delta_t)) and
                 bounds.is_out(rocket.advance(collision.delta_t))):
                 self.info('Can not reach aim target (off-screen/past us).')
                 continue
@@ -56,7 +56,7 @@ class TargetPicker:
                                 expected_spawns)
             my_hit = next((hit for hit in hits if hit.rocket_id == rocket.id),
                           None)
-            if not my_hit or my_hit.meteor.id != target.meteor.id:
+            if not my_hit or my_hit.victim.id != target.victim.id:
                 self.info('Would hit other meteor before reaching target: {my_hit}')
                 continue
             target.hit_time = hit_time
@@ -64,11 +64,14 @@ class TargetPicker:
         return None
 
     def rank_candidates(
-        self, targets: List[target_tracker.Target], constants: Constants,
-        bounds: physics.Bounds) -> None:
-        def _score(target: target_tracker.Target) -> float:
-            score = constants.meteorInfos[target.meteor.meteorType].score
-            time = physics.time_until_out_of_bounds(target.meteor, bounds)
+        self, current_time: float, targets: List[target_tracker.Target],
+        constants: Constants, bounds: physics.Bounds) -> None:
+        def _score(target: target_tracker.Target):
+            score = constants.meteorInfos[target.victim.meteorType].score
+            time = physics.time_until_out_of_bounds(target.victim, bounds)
+            if target.victim.is_future_meteor():
+                delta_t = target.victim.spawn_time - current_time
+                time += delta_t
             # Prio:
             # - higher score (-score)
             # - time left until it exits the area (more urgent)

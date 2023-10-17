@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List, Optional
+from typing import Iterable, List, Optional
 from game_message import *
 
 import physics
@@ -7,9 +7,8 @@ import physics
 @dataclasses.dataclass
 class Hit:
     delta_t: float
-    meteor: Meteor
+    victim: physics.SpawnableMeteor
     rocket_id: str
-    is_predicted_meteor: bool
 
 
 class Simulation:
@@ -20,7 +19,7 @@ class Simulation:
     def simulate(
         self, current_time: float, bounds: physics.Bounds,
         rockets: List[Projectile], meteors: List[Meteor],
-        predicted_spawns: List[physics.Spawn]) -> List[Hit]:
+        predicted_spawns: Iterable[physics.SpawnableMeteor]) -> List[Hit]:
         rockets = list(rockets)
         meteors = list(meteors)
         spawns = list(predicted_spawns)
@@ -38,49 +37,38 @@ class Simulation:
                         continue
                     any_hit = True
                     if not next_hit or time < next_hit.delta_t:
-                        next_hit = Hit(time, meteor, rocket.id,
-                                       is_predicted_meteor=False)
+                        next_hit = Hit(
+                            time, physics.SpawnableMeteor.from_meteor(meteor),
+                            rocket.id)
                 for spawn in spawns:
-                    # Note: from disassembling the local binary, we find that
-                    # spawns are handled by spawning at their position based on
-                    # the exact floating point time of collision (e.g. time
-                    # 34.567), but still move for the value of an entire tick
-                    # afterwards (instead of the remainder of the tick).
-                    # To simulate them: spawn them at t=ceiling(spawn_time)
-                    # assuming position+1*velocity, move them back 't', and only
-                    # consider collisions that happen after spawn_time.
                     # TODO: consider speed distribution, not just avg
+                    if current_time > spawn.spawn_time:
+                        for rocket in rockets:
+                            print(rocket)
+                        for meteor in meteors:
+                            print(meteor)
                     instance = dataclasses.replace(spawn)
-                    next_tick_t = math.ceil(instance.spawn_time)
-                    delta_t = next_tick_t - current_time
-                    assert delta_t > 0, delta_t
-                    # move forward by 1, then backwards by delta_t
-                    # i.e. -(next_tick_t-1)
-                    instance = instance.advance(-(delta_t - 1))
+                    instance = instance.rewind_for_physics(current_time)
                     time = self._rocket_meteor_collision_time(rocket, instance)
                     if time is None:
                         continue
-                    if current_time + time < next_tick_t:  # not spawned yet!
-                        # Note that we use next_tick_t, not spawn_time, because
-                        # the logic of the server finds all collisions THEN
-                        # creates splits, so splits can only collide on the next
-                        # tick's processing
+                    if not instance.is_valid_hit(current_time + time):
                         continue
                     if (bounds.is_out(rocket.advance(time)) and
                         bounds.is_out(instance.advance(time))):
                         continue
                     any_hit = True
                     if not next_hit or time < next_hit.delta_t:
-                        next_hit = Hit(time, spawn, rocket.id,
-                                       is_predicted_meteor=True)
+                        next_hit = Hit(time, spawn, rocket.id)
                 if not any_hit:
                     rockets.remove(rocket)
             if next_hit:
-                if next_hit.is_predicted_meteor:
-                    spawn = next(s for s in spawns if s.id == next_hit.meteor.id)
+                if next_hit.victim.is_future_meteor():
+                    spawn = next(s for s in spawns if s.id == next_hit.victim.id)
                     spawns.remove(spawn)
                 else:
-                    meteors.remove(next_hit.meteor)
+                    meteor = next(m for m in meteors if m.id == next_hit.victim.id)
+                    meteors.remove(meteor)
                 rocket = next(r for r in rockets if r.id == next_hit.rocket_id)
                 rockets.remove(rocket)
                 hits.append(next_hit)

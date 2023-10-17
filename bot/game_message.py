@@ -61,7 +61,8 @@ class Vector:
    def pprint(self) -> str:
         return f'({self.x:7.2f},{self.y:7.2f})'
 
-   def from_angle(angle: float) -> 'Vector':
+   @classmethod
+   def from_angle(cls, angle: float) -> 'Vector':
        return Vector(math.cos(angle), math.sin(angle))
 
    def normalized(self) -> 'Vector':

@@ -17,13 +17,50 @@ class CollisionInfo:
 
 
 @dataclasses.dataclass
-class Spawn(Meteor):
+class SpawnableMeteor(Meteor):
+    """Meteor that might not have spawned yet."""
     # Note: 'position' is the spawn position
-    spawn_time: float
+    spawn_time: Optional[float] = None
+    parent: Optional[Meteor] = None
     # Velocity multiplier range
-    min_multiplier: float
-    max_multiplier: float
-    parent: Optional[Meteor]
+    min_multiplier: float = 1.0
+    max_multiplier: float = 1.0
+
+    @classmethod
+    def from_meteor(cls, meteor: Meteor) -> 'SpawnableMeteor':
+        return SpawnableMeteor(
+            position=meteor.position, velocity=meteor.velocity,
+            size=meteor.size, meteorType=meteor.meteorType, id=meteor.id)
+
+    def rewind_for_physics(self, current_time: float) -> 'SpawnableMeteor':
+        """Create a spawn instance rewinded to check for collisions post-spawn"""
+        if not self.is_future_meteor():
+            return dataclasses.replace(self)
+        # Note: from disassembling the local binary, we find that spawns are
+        # handled by spawning at their position based on the exact floating
+        # point time of collision (e.g. time 34.567), but still move for the
+        # value of an entire 1.0 tick afterwards (instead of the remainder of
+        # the tick).
+        # To simulate them: spawn them at t=ceiling(spawn_time) assuming
+        # position+1*velocity, move them back 't', and only
+        # consider collisions that happen after t.
+        spawn_next_tick_t = math.ceil(self.spawn_time)
+        delta_t = spawn_next_tick_t - current_time
+        assert delta_t > 0, (delta_t, self.spawn_time, spawn_next_tick_t, current_time, self)
+        # move forward by 1, then backwards by delta_t i.e. -(spawn_next_tick_t-1)
+        return self.advance(-(delta_t - 1))
+
+    def is_valid_hit(self, hit_time: float) -> bool:
+        if not self.is_future_meteor():
+            return True
+        # Note that we use next_tick_t, not spawn_time, because the logic of the
+        # server finds all collisions THEN creates splits, so splits can only
+        # collide on the next tick's processing
+        next_tick_t = math.ceil(self.spawn_time)
+        return hit_time >= next_tick_t
+
+    def is_future_meteor(self) -> bool:
+        return self.spawn_time is not None
 
 
 def time_until_out_of_bounds(body: Body, bounds: 'Bounds') -> float:
@@ -33,18 +70,16 @@ def time_until_out_of_bounds(body: Body, bounds: 'Bounds') -> float:
     assert vx != 0 or vy != 0, f'Null velocity: {body}'
     # Only the center of the body matters for top/right/bottom hits (despawn).
     # On the left side, the size must be taken into account (must be fully out).
-    tx = None
+    tx = float('Infinity')
     if vx > 0:  # Right exit
         tx = (bounds.right - x) / vx
     elif vx < 0:  # Left exit
         tx = (x + body.size - bounds.left) / (-vx)
-    ty = None
+    ty = float('Infinity')
     if vy > 0:  # Top exit
         ty = (bounds.bottom - y) / vy
     elif vy < 0:  # Bottom exit
         ty = (y - bounds.top) / (-vy)
-    tx = tx if tx is not None else ty
-    ty = ty if ty is not None else tx
     return min(tx, ty)
 
 
@@ -60,7 +95,7 @@ class Bounds:
         return time_until_out_of_bounds(body, self) <= 0
 
     def is_out_vertically(self, body: Body) -> bool:
-        return body.y < self.top or body.y >= self.bottom
+        return body.position.y < self.top or body.position.y >= self.bottom
 
 
 # Potential solutions for a quadratic equation, can be negative (e.g. time).
@@ -143,7 +178,7 @@ def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
 
 def expect_explosions(
     rocket: Body, target: Meteor, current_time: float,
-    spawn_time: float, constants: Constants) -> List[Spawn]:
+    spawn_time: float, constants: Constants) -> List[SpawnableMeteor]:
     delta_t = spawn_time - current_time
     assert delta_t >= 0, delta_t
     spawn_position = collision_point(rocket, target, delta_t)
@@ -162,7 +197,7 @@ def expect_explosions(
         min_multiplier = 0.8
         max_multiplier = 1.2
         spawn_id = f'{target.id}-expl{i}'
-        explosions.append(Spawn(
+        explosions.append(SpawnableMeteor(
             id=spawn_id, position=spawn_position, velocity=velocity,
             meteorType=explosion.meteorType, size=info.size,
             parent=parent, spawn_time=spawn_time, min_multiplier=min_multiplier,

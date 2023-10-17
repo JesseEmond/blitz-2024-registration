@@ -41,6 +41,8 @@ class Bot:
             f'Errors during last tick : {game.lastTickErrors}'
         start_time = time.time()
         self.info(f"Playing tick {game.tick}. Score: {game.score}")
+        # TODO: clarify server logic order (update vs. fetch & get move)
+        # TODO: revisit all uses of time -- put them in tick terms
 
         if not self.constants:
             self.constants = game.constants
@@ -68,7 +70,7 @@ class Bot:
             if game.cannon.cooldown == 0:
                 self.info(f'Shooting!')
                 explosions = physics.expect_explosions(
-                    pick.rocket, pick.target.meteor, self.events.previous_tick,
+                    pick.rocket, pick.target.victim, game.tick,
                     pick.target.hit_time, self.constants)
                 self.tracker.set_next_rocket_target(pick.target, explosions)
                 do_shoot = True

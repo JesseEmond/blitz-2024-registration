@@ -42,7 +42,7 @@ class Listener:
 
 @dataclasses.dataclass
 class MeteorSplit:
-    spawn: physics.Spawn
+    spawn: physics.SpawnableMeteor
     next_tick_position: Vector
     delta_angle: float
     # How much time delta_t elapsed after the meteor split appeared, until we
@@ -59,8 +59,8 @@ class Changes:
     lost_rockets: Set[str]
 
     def any_change(self) -> bool:
-        return (self.just_shot or self.new_meteors or self.lost_meteors or
-                self.new_rockets or self.lost_rockets)
+        return bool(self.just_shot or self.new_meteors or self.lost_meteors or
+                    self.new_rockets or self.lost_rockets)
 
     def insta_killed(self) -> bool:
         return self.just_shot and not self.new_rockets
@@ -105,7 +105,7 @@ class GameEvents:
         rockets = list(game.rockets)
         self.detect_insta_kill_rockets(game.cannon, rockets, changes)
         self.detect_new_rockets(rockets, changes)
-        self.detect_meteor_hits(game.tick, changes)
+        self.detect_meteor_hits(self.previous_tick, changes)
         self.detect_meteor_spawns(game.meteors, changes)
         self.detect_missed_meteors(changes)
 
@@ -135,7 +135,7 @@ class GameEvents:
                 pos_dist = meteor.position.dist_sq(split.next_tick_position)
                 return (angle_dist, pos_dist)
             candidates = [m for m in new_meteors if m.meteorType == split.spawn.meteorType]
-            assert candidates, f'No new meteor of type {split.meteorType} for split {split}'
+            assert candidates, f'No new meteor of type {split.spawn.meteorType} for split {split}'
             meteor = min(candidates, key=_split_distance)
             self.meteors[meteor.id] = meteor
             for listener in self.listeners:
