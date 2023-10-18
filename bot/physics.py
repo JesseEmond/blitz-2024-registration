@@ -47,7 +47,7 @@ class SpawnableMeteor(Meteor):
         spawn_next_tick_t = math.ceil(self.spawn_time)
         delta_t = spawn_next_tick_t - current_time
         assert delta_t > 0, (delta_t, self.spawn_time, spawn_next_tick_t, current_time, self)
-        # move forward by 1, then backwards by delta_t i.e. -(spawn_next_tick_t-1)
+        # move forward by 1, then backwards by delta_t i.e. -(delta_t-1)
         return self.advance(-(delta_t - 1))
 
     def is_valid_hit(self, hit_time: float) -> bool:
@@ -124,28 +124,28 @@ def rocket_target_collision_times(
 
 
 def aim_at_moving_target(
-    source: Vector, rocket_size: float, rocket_speed: float,
-    target: Body) -> Optional[CollisionInfo]:
+    current_time: float, source: Vector, rocket_size: float,
+    rocket_speed: float, target: SpawnableMeteor) -> Optional[CollisionInfo]:
     """Aim body towards moving body."""
     # TODO: Can we hit targets slightly faster by taking into account the
     # two sphere radii from the get-go? Could try numeric methods for now...
-    times = rocket_target_collision_times(source, target, rocket_speed)
+    instance = target.rewind_for_physics(current_time)
+    times = rocket_target_collision_times(source, instance, rocket_speed)
     earliest = None
-    for t in times:
-        target_at_time_t = target.position.add(target.velocity.scale(t))
-        collision = CollisionInfo(
-            target=target_at_time_t, delta_t=t, center_collision_t=t,
-            target_collision_point=None)
+    for center_delta_t in times:
+        target_at_time_t = instance.advance(center_delta_t).position
         rocket_dir = target_at_time_t.minus(source).normalized()
         rocket = Body(position=source,
             velocity=rocket_dir.scale(rocket_speed), size=rocket_size)
-        t = next_collision_time(rocket, target)  # Find sphere collision time
-        if not t:
+        delta_t = next_collision_time(rocket, instance)  # Find sphere collision time
+        if delta_t is None or delta_t < 0:
             continue
-        collision.delta_t = t
-        if collision.delta_t < 0:
+        if not target.is_valid_hit(current_time + delta_t):
             continue
-        collision.target_collision_point = collision_point(rocket, target, t)
+        collision_pt = collision_point(rocket.advance(delta_t), instance.advance(delta_t))
+        collision = CollisionInfo(
+            target=target_at_time_t, delta_t=delta_t,
+            center_collision_t=center_delta_t, target_collision_point=collision_pt)
         if not earliest or collision.delta_t < earliest.delta_t:
             earliest = collision
     return earliest
@@ -168,22 +168,16 @@ def next_collision_time(p: Body, q: Body) -> Optional[float]:
     return min((t for t in ts if t >= 0), default=None) if ts else None
 
 
-def collision_point(p: Body, q: Body, collision_time: float) -> Vector:
-    # Fast-forward to the collision positions
-    p_end = p.advance(collision_time)
-    q_end = q.advance(collision_time)
-    delta = q_end.position.minus(p_end.position).normalized()
-    return p_end.position.add(delta.scale(p.size))
+def collision_point(p: Body, q: Body) -> Vector:
+    delta = q.position.minus(p.position).normalized()
+    return p.position.add(delta.scale(p.size))
 
 
 def expect_explosions(
-    rocket: Body, target: Meteor, current_time: float,
-    spawn_time: float, constants: Constants) -> List[SpawnableMeteor]:
-    delta_t = spawn_time - current_time
-    assert delta_t >= 0, delta_t
-    spawn_position = collision_point(rocket, target, delta_t)
+    rocket: Body, target: Meteor, spawn_time: float,
+    constants: Constants) -> List[SpawnableMeteor]:
+    spawn_position = collision_point(rocket, target)
     parent_orientation = target.velocity.angle()
-    parent = target.advance(delta_t)
     explosions = []
     explodes_into = constants.meteorInfos[target.meteorType].explodesInto
     for i, explosion in enumerate(explodes_into):
@@ -200,17 +194,6 @@ def expect_explosions(
         explosions.append(SpawnableMeteor(
             id=spawn_id, position=spawn_position, velocity=velocity,
             meteorType=explosion.meteorType, size=info.size,
-            parent=parent, spawn_time=spawn_time, min_multiplier=min_multiplier,
+            parent=target, spawn_time=spawn_time, min_multiplier=min_multiplier,
             max_multiplier=max_multiplier))
     return explosions
-
-
-def earliest_hit(body: Body, others: List[Body]) -> Optional[float]:
-    earliest = None
-    for other in others:
-        t = next_collision_time(body, other)
-        if t is None:
-            continue
-        if earliest is None or t < earliest:
-            earliest = t
-    return earliest

@@ -1,7 +1,7 @@
 """Keep track of the state of the game and various statistics."""
 import dataclasses
 import math
-from typing import Callable, List, Mapping, Optional, Set, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Set, Tuple
 
 from game_message import *
 
@@ -70,10 +70,11 @@ class GameEvents:
     """Track source and statuses of rockets and meteors, detect events."""
 
     def __init__(self):
-        self.meteors = {}  # ID to Meteor
-        self.rockets = {}  # ID to Rocket
+        self.meteors: Dict[str, Meteor] = {}
+        self.rockets: Dict[str, Projectile] = {}
         self.listeners = []
 
+        self.previous_tick = 0
         self.current_tick = 0
         self.expected_splits = []
 
@@ -91,10 +92,8 @@ class GameEvents:
             listener.on_first_tick(self, constants, bounds)
 
     def update(self, game: GameMessage) -> None:
-        self.previous_tick = self.current_tick
+        self.previous_tick = game.tick - 1
         self.current_tick = game.tick
-        assert self.previous_tick + 1 == self.current_tick, \
-            (self.previous_tick, self.current_tick)
         for listener in self.listeners:
             listener.on_tick(self, game)
 
@@ -105,8 +104,8 @@ class GameEvents:
         rockets = list(game.rockets)
         self.detect_insta_kill_rockets(game.cannon, rockets, changes)
         self.detect_new_rockets(rockets, changes)
-        self.detect_meteor_hits(self.previous_tick, changes)
-        self.detect_meteor_spawns(game.meteors, changes)
+        expected_splits = self.detect_meteor_hits(changes)
+        self.detect_meteor_spawns(game.meteors, changes, expected_splits)
         self.detect_missed_meteors(changes)
 
         self.track_positions(game.meteors, game.rockets)
@@ -114,21 +113,26 @@ class GameEvents:
         for listener in self.listeners:
             listener.on_after_events(self, game, changes)
 
-    def detect_meteor_hits(self, tick: float, changes: Changes) -> None:
+    def detect_meteor_hits(self, changes: Changes) -> List[MeteorSplit]:
         """Note: removes hit 'lost_meteors'."""
+        splits = []
         for rocket in changes.lost_rockets:
-            self._check_rocket_hit(tick, rocket, changes.lost_meteors)
+            splits.extend(
+                self._check_rocket_hit(self.previous_tick, rocket,
+                                       changes.lost_meteors))
+        return splits
 
     def detect_missed_meteors(self, changes: Changes) -> None:
         for meteor in changes.lost_meteors:
             self.on_miss(meteor)
 
     def detect_meteor_spawns(
-        self, meteors: List[Meteor], changes: Changes) -> None:
+        self, meteors: List[Meteor], changes: Changes,
+        expected_splits: List[MeteorSplit]) -> None:
         new_meteors = [m for m in meteors if m.id in changes.new_meteors]
-        assert len(new_meteors) >= len(self.expected_splits), (
+        assert len(new_meteors) >= len(expected_splits), (
             new_meteors, self.expected_splits)
-        for split in self.expected_splits:
+        for split in expected_splits:
             def _split_distance(meteor: Meteor) -> Tuple[float, float]:
                 angle_diff = abs(meteor.velocity.angle() - split.spawn.velocity.angle())
                 angle_dist = round(math.degrees(angle_diff), 1)
@@ -141,7 +145,6 @@ class GameEvents:
             for listener in self.listeners:
                 listener.on_meteor_split_spawn(self, meteor.id, split)
             new_meteors.remove(meteor)
-        self.expected_splits = []
         for meteor in new_meteors:
             self.meteors[meteor.id] = meteor
             for listener in self.listeners:
@@ -201,7 +204,7 @@ class GameEvents:
         return new_ids, lost_ids
 
     def _check_rocket_hit(
-        self, tick: float, rocket_id: str, meteors: Set[str]) -> None:
+        self, tick: float, rocket_id: str, meteors: Set[str]) -> List[MeteorSplit]:
         lost_meteors = set(meteors)
         # Because our rockets have constant speed and we don't move, we don't
         # have to check for two potential rockets clearing a given meteor.
@@ -209,32 +212,35 @@ class GameEvents:
         hit_time, hit_meteor = None, None
         for meteor_id in meteors:
             meteor = self.meteors[meteor_id]
-            t = physics.next_collision_time(rocket, meteor)
-            if t is None:
+            delta_t = physics.next_collision_time(rocket, meteor)
+            if delta_t is None:
                 continue
-            if (self.bounds.is_out(meteor.advance(t)) and
-                self.bounds.is_out(rocket.advance(t))):
+            if (self.bounds.is_out(meteor.advance(delta_t)) and
+                self.bounds.is_out(rocket.advance(delta_t))):
                 continue
-            if hit_meteor is None or t < hit_time:
+            if hit_meteor is None or delta_t < hit_time:
                 hit_meteor = meteor_id
-                hit_time = t
+                hit_time = delta_t
+        splits = []
         if hit_meteor is not None:
-            previous_tick = tick - 1
-            self.on_hit(rocket_id, hit_meteor, previous_tick + hit_time)
+            self.rockets[rocket_id] = self.rockets[rocket_id].advance(hit_time)
+            self.meteors[hit_meteor] = self.meteors[hit_meteor].advance(hit_time)
+            splits = self.on_hit(rocket_id, hit_meteor,
+                                 self.previous_tick + hit_time)
             meteors.remove(hit_meteor)
         else:
             self.on_wiff(rocket_id)
+        return splits
 
-    def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> None:
+    def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> List[MeteorSplit]:
         rocket = self.rockets[rocket_id]
         for listener in self.listeners:
             listener.on_hit(self, rocket_id, meteor_id, t)
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.meteorType]
         # Advance to moment of collision
-        prev_tick = int(t)
-        explosions = physics.expect_explosions(
-            rocket, meteor, prev_tick, t, self.constants)
+        explosions = physics.expect_explosions(rocket, meteor, t, self.constants)
+        splits = []
         for i, explosion in enumerate(explosions):
             # Advance to expected time when we'll see evidence of the new splits
             # Note: from reversing the local binary, we know that the splits are
@@ -242,13 +248,12 @@ class GameEvents:
             # afterwards as if they were there for the whole tick (i.e. +1 vel).
             next_tick_delta_t = 1.0
             avg_velocity = explosion.velocity
-            next_tick_position = explosion.position.add(
-                avg_velocity.scale(next_tick_delta_t))
-            if (not self.bounds.is_out_vertically(next_tick_position)
-                and next_tick_position.x >= 0):
+            next_tick_explosion = explosion.advance(next_tick_delta_t)
+            if (not self.bounds.is_out_vertically(next_tick_explosion)
+                and next_tick_explosion.position.x >= 0):
                 angle_delta = avg_velocity.angle() - meteor.velocity.angle()
-                self.expected_splits.append(MeteorSplit(
-                    explosion, next_tick_position, angle_delta,
+                splits.append(MeteorSplit(
+                    explosion, next_tick_explosion.position, angle_delta,
                     next_tick_delta_t))
             else:  # out of bounds -- this is a miss.
                 # Store a temp meteor for listeners to use, then delete it.
@@ -258,6 +263,7 @@ class GameEvents:
                 del self.meteors[explosion.id]
         del self.rockets[rocket_id]
         del self.meteors[meteor_id]
+        return splits
 
     def on_miss(self, meteor_id: str) -> None:
         for listener in self.listeners:

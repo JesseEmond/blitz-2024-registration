@@ -90,6 +90,14 @@ class TargetTracker(game_events.Listener):
             f'Wiffed, but did not clear target beforehand? {rocket_id}'):
             del self.rocket_targets[rocket_id]
 
+    def on_after_events(self, events: game_events.GameEvents, game: GameMessage,
+                        changes: game_events.Changes) -> None:
+        for predicted in self.predicted_spawns.values():
+            self.asserter.expect(
+                predicted.spawn_time > game.tick,
+                f'Expect {predicted.id} to spawn on {predicted.spawn_time}, '
+                f'but tick is now {game.tick}')
+
     def change_target(self, current_time: float, rocket: Projectile,
                       new_target: Optional[Target]) -> None:
         prev_target = self.rocket_targets.get(rocket.id)
@@ -108,11 +116,10 @@ class TargetTracker(game_events.Listener):
             # Regenerate the expected explosions
             self.dont_expect_spawns(new_target.victim.id)
             explosions = physics.expect_explosions(
-                rocket, new_target.victim, current_time, new_target.hit_time,
-                self.constants)
+                rocket, new_target.victim, new_target.hit_time, self.constants)
             for explosion in explosions:
                 print(f'(EXPL) Predict meteor {new_target.victim.id} to explode '
-                      f'into {explosion.id}')
+                      f'into {explosion.id} at t={new_target.hit_time:.2f}')
                 assert explosion.id not in self.predicted_spawns,\
                     (explosion, self.predicted_spawns)
                 self.predicted_spawns[explosion.id] = explosion

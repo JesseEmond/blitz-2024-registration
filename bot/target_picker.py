@@ -21,7 +21,8 @@ class TargetPicker:
 
     def pick_target(
         self, cannon: Cannon, rockets: List[Projectile],
-        meteors: List[Meteor], expected_spawns: Iterable[physics.SpawnableMeteor],
+        meteors: List[Meteor],
+        expected_spawns: Iterable[physics.SpawnableMeteor],
         targets: List[target_tracker.Target], constants: Constants,
         bounds: physics.Bounds, tick: int) -> Optional[PickedTarget]:
         if not targets:
@@ -29,7 +30,7 @@ class TargetPicker:
         self.rank_candidates(tick, targets, constants, bounds)
         for target in targets:
             self.info(f'Considering target: {target.victim.id}')
-            collision = self.aim_ahead(cannon, target.victim, constants)
+            collision = self.aim_ahead(tick, cannon, target.victim, constants)
             if not collision:
                 self.info('Can not reach target (no collision found).')
                 continue
@@ -59,6 +60,22 @@ class TargetPicker:
             if not my_hit or my_hit.victim.id != target.victim.id:
                 self.info('Would hit other meteor before reaching target: {my_hit}')
                 continue
+            if tick+my_hit.delta_t != hit_time:
+                print('Note: ', target.victim.id)
+                print('sim collision delta t:')
+                print(my_hit.delta_t)
+                print(rocket)
+                print(physics.next_collision_time(rocket, target.victim))
+                print('aim at moving target delta t:')
+                dbgtimes = physics.rocket_target_collision_times(cannon.position, target.victim, constants.rockets.speed)
+                for dbgt in dbgtimes:
+                    tt = target.victim.advance(dbgt).position
+                    dbgrckd = tt.minus(cannon.position).normalized()
+                    dbgr = Body(position=cannon.position, velocity=dbgrckd.scale(constants.rockets.speed), size=constants.rockets.size)
+                    print(collision.delta_t)
+                    print(dbgr)
+                    print(physics.next_collision_time(dbgr, target.victim))
+            assert tick+my_hit.delta_t == hit_time, (tick, my_hit.delta_t, tick+my_hit.delta_t, hit_time, my_hit)
             target.hit_time = hit_time
             return PickedTarget(target, collision.target, rocket)
         return None
@@ -78,9 +95,10 @@ class TargetPicker:
             return (-score, time)
         targets.sort(key=_score)
 
-    def aim_ahead(self, cannon: Cannon, target: Projectile,
-                  constants: Constants) -> Optional[physics.CollisionInfo]:
-        collision = physics.aim_at_moving_target(
+    def aim_ahead(self, tick: float, cannon: Cannon,
+        target: physics.SpawnableMeteor,
+        constants: Constants) -> Optional[physics.CollisionInfo]:
+        collision = physics.aim_at_moving_target(tick,
             cannon.position, constants.rockets.size,
             constants.rockets.speed, target)
         if not collision:
