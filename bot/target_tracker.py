@@ -53,6 +53,7 @@ class TargetTracker(game_events.Listener):
             f'known: {list(self.predicted_spawns.keys())}'):
             return
         predicted = self.predicted_spawns[expected.spawn.id]
+        print(f'(EXPL) Split {predicted.id} is really {meteor_id}!')
         delta_t = predicted.spawn_time - events.previous_tick
         self.asserter.expect(
             0 <= delta_t < 1.0,
@@ -62,6 +63,8 @@ class TargetTracker(game_events.Listener):
         if rocket_id is not None:
             # We now know the real spawn's velocity. Remove the target and let
             # refresh_assignments pick it back up if still relevant.
+            print(f'(EXPL) Update: now know the real velocity of '
+                  f'{expected.spawn.id}, resetting target for {rocket_id}.')
             self.change_target(
                 events.previous_tick, events.rockets[rocket_id], None)
         del self.predicted_spawns[expected.spawn.id]
@@ -125,12 +128,13 @@ class TargetTracker(game_events.Listener):
                 self.predicted_spawns[explosion.id] = explosion
 
     def dont_expect_spawns(self, meteor_id: str) -> None:
-        print(f'(EXPL) Meteor {meteor_id} will not split')
         children = [spawn for spawn in self.predicted_spawns.values()
                     if spawn.parent and spawn.parent.id == meteor_id]
+        if children:
+            print(f'(EXPL) Meteor {meteor_id} will not split')
         for child in children:
-            print(f'(EXPL) Removing meteor {meteor_id} explosion {child.id} '
-                  'from predictions')
+            print(f'(EXPL) Removing meteor {meteor_id} explosion '
+                  f'{child.id} from predictions')
             del self.predicted_spawns[child.id]
             assignment = self.get_assignment(child.id)
             # TODO: remove pedantic once we can guarantee this won't happen
@@ -145,7 +149,7 @@ class TargetTracker(game_events.Listener):
     def refresh_assignments(self, game: GameMessage) -> None:
         sim = simulation.Simulation()
         seen_rockets = set()
-        time = game.tick - 1
+        time = game.tick
         hits = sim.simulate(time, self.bounds, game.rockets, game.meteors,
                             self.predicted_spawns.values())
         for hit in hits:

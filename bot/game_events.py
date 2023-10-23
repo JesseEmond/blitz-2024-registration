@@ -76,7 +76,6 @@ class GameEvents:
 
         self.previous_tick = 0
         self.current_tick = 0
-        self.expected_splits = []
 
         # Set on first tick.
         self.constants = None
@@ -131,7 +130,7 @@ class GameEvents:
         expected_splits: List[MeteorSplit]) -> None:
         new_meteors = [m for m in meteors if m.id in changes.new_meteors]
         assert len(new_meteors) >= len(expected_splits), (
-            new_meteors, self.expected_splits)
+            new_meteors, expected_splits)
         for split in expected_splits:
             def _split_distance(meteor: Meteor) -> Tuple[float, float]:
                 angle_diff = abs(meteor.velocity.angle() - split.spawn.velocity.angle())
