@@ -22,6 +22,7 @@ class Stats(game_events.Listener):
         self.miss_stats = {type_: 0 for type_ in iter(MeteorType)}
         self.wrong_targets = 0
         self.target_changes = 0
+        self.predicted_shots = 0
         self.hit_time_deltas = []
         self.tick_times = []
         self.split_angle_deltas = []
@@ -142,6 +143,10 @@ class Stats(game_events.Listener):
         self.idle_ticks += 1
         print('[IDLE] Not shooting...')
 
+    def record_predicted_shot(self, meteor_id) -> None:
+        self.predicted_shots += 1
+        print(f'[PRED] Shooting predicted meteor: {meteor_id}')
+
     def print_stats(self) -> None:
         potential = self.score + self.lost_score
         print(f'Final score:\t\t{self.score} points')
@@ -182,6 +187,9 @@ class Stats(game_events.Listener):
 
         print()
         print(f'Changed target {self.target_changes} times')
+
+        print()
+        print(f'Shot predicted spawn {self.predicted_shots} times')
 
         print()
         print('Hit time predictions for right targets')

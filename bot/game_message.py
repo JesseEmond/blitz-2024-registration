@@ -122,6 +122,10 @@ class Body:
     def contains(self, point: Vector) -> bool:
         return self.position.in_range(point, self.size)
 
+    def overlaps(self, other: 'Body') -> bool:
+        sz_sum = self.size + other.size
+        return self.position.dist_sq(other.position) <= sz_sum * sz_sum
+
     def advance(self, delta_t: float) -> 'Body':
         new_pos = self.position.add(self.velocity.scale(delta_t))
         return dataclasses.replace(self, position=new_pos)

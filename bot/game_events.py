@@ -222,6 +222,7 @@ class GameEvents:
                 hit_time = delta_t
         splits = []
         if hit_meteor is not None:
+            # Advance to moment of collision
             self.rockets[rocket_id] = self.rockets[rocket_id].advance(hit_time)
             self.meteors[hit_meteor] = self.meteors[hit_meteor].advance(hit_time)
             splits = self.on_hit(rocket_id, hit_meteor,
@@ -237,7 +238,6 @@ class GameEvents:
             listener.on_hit(self, rocket_id, meteor_id, t)
         meteor = self.meteors[meteor_id]
         info = self.constants.meteorInfos[meteor.meteorType]
-        # Advance to moment of collision
         explosions = physics.expect_explosions(rocket, meteor, t, self.constants)
         splits = []
         for i, explosion in enumerate(explosions):

@@ -50,14 +50,25 @@ class SpawnableMeteor(Meteor):
         # move forward by 1, then backwards by delta_t i.e. -(delta_t-1)
         return self.advance(-(delta_t - 1))
 
-    def is_valid_hit(self, hit_time: float) -> bool:
+    def hit_time_delta_post_spawn(self, current_time: float, delta_t: float,
+                                  rocket: Body) -> Optional[float]:
         if not self.is_future_meteor():
-            return True
+            return delta_t
         # Note that we use next_tick_t, not spawn_time, because the logic of the
         # server finds all collisions THEN creates splits, so splits can only
         # collide on the next tick's processing
         next_tick_t = math.ceil(self.spawn_time)
-        return hit_time >= next_tick_t
+        hit_time = current_time + delta_t
+        if hit_time >= next_tick_t:
+            return delta_t
+        # If the hit can't happen before the spawn, check if the collision would
+        # be valid right after spawning anyway.
+        spawn_body = Body(self.position, self.velocity, self.size)
+        spawn_delta_t = next_tick_t - current_time
+        if spawn_body.overlaps(rocket.advance(spawn_delta_t)):
+            return spawn_delta_t
+        else:
+            return None
 
     def is_future_meteor(self) -> bool:
         return self.spawn_time is not None
@@ -112,15 +123,21 @@ def solve_quadratic(a: float, b: float, c: float) -> QuadraticSolution:
     return p - q, p + q
 
 
-def rocket_target_collision_times(
-    source: Vector, target: Body, rocket_speed: float) -> QuadraticSolution:
-    """Times for 'source' to reach a moving 'target' with a rocket."""
+def rocket_target_collision_times(source: Vector, target: Body,
+                                  rocket_speed: float) -> Optional[float]:
+    """Time for 'source' to reach a moving 'target' with a rocket."""
     # https://gamedev.stackexchange.com/q/25277
     delta_pos = target.position.minus(source)
     a = target.velocity.dot(target.velocity) - rocket_speed * rocket_speed
     b = 2 * target.velocity.dot(delta_pos)
     c = delta_pos.dot(delta_pos)
-    return solve_quadratic(a, b, c)
+    ts = solve_quadratic(a, b, c)
+    if not ts:
+        return None
+    t1, t2 = ts
+    assert t1 >= 0 or t2 >= 0, (t1, t2)
+    assert t1 < 0 or t2 < 0, (t1, t2)
+    return max(t1, t2)
 
 
 def aim_at_moving_target(
@@ -130,25 +147,21 @@ def aim_at_moving_target(
     # TODO: Can we hit targets slightly faster by taking into account the
     # two sphere radii from the get-go? Could try numeric methods for now...
     instance = target.rewind_for_physics(current_time)
-    times = rocket_target_collision_times(source, instance, rocket_speed)
-    earliest = None
-    for center_delta_t in times:
-        target_at_time_t = instance.advance(center_delta_t).position
-        rocket_dir = target_at_time_t.minus(source).normalized()
-        rocket = Body(position=source,
-            velocity=rocket_dir.scale(rocket_speed), size=rocket_size)
-        delta_t = next_collision_time(rocket, instance)  # Find sphere collision time
-        if delta_t is None or delta_t < 0:
-            continue
-        if not target.is_valid_hit(current_time + delta_t):
-            continue
-        collision_pt = collision_point(rocket.advance(delta_t), instance.advance(delta_t))
-        collision = CollisionInfo(
-            target=target_at_time_t, delta_t=delta_t,
-            center_collision_t=center_delta_t, target_collision_point=collision_pt)
-        if not earliest or collision.delta_t < earliest.delta_t:
-            earliest = collision
-    return earliest
+    center_delta_t = rocket_target_collision_times(source, instance, rocket_speed)
+    target_at_time_t = instance.advance(center_delta_t).position
+    rocket_dir = target_at_time_t.minus(source).normalized()
+    rocket = Body(position=source,
+        velocity=rocket_dir.scale(rocket_speed), size=rocket_size)
+    delta_t = next_collision_time(rocket, instance)  # Find sphere collision time
+    if delta_t is None:
+        return None
+    delta_t = target.hit_time_delta_post_spawn(current_time, delta_t, rocket)
+    if delta_t is None:
+        return None
+    collision_pt = collision_point(rocket.advance(delta_t), instance.advance(delta_t))
+    return CollisionInfo(
+        target=target_at_time_t, delta_t=delta_t,
+        center_collision_t=center_delta_t, target_collision_point=collision_pt)
 
 
 def next_collision_time(p: Body, q: Body) -> Optional[float]:
@@ -176,6 +189,11 @@ def collision_point(p: Body, q: Body) -> Vector:
 def expect_explosions(
     rocket: Body, target: Meteor, spawn_time: float,
     constants: Constants) -> List[SpawnableMeteor]:
+    # Note: assumes that rocket & target are already advanced to their collision
+    # point.
+    dist_sq = rocket.position.dist_sq(target.position)
+    assert dist_sq <= (rocket.size + target.size)**2 + 1e-3, \
+            f'Calling expect_explosions with rocket & target that are too far: \nRocket: {rocket}\nTarget: {target}\nDist squared: {dist_sq}\nSizes: {rocket.size}, {target.size}'
     spawn_position = collision_point(rocket, target)
     parent_orientation = target.velocity.angle()
     explosions = []

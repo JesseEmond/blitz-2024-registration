@@ -13,23 +13,26 @@ class Hit:
 
 class Simulation:
 
-    def __init__(self) -> None:
+    def __init__(self, constants: Constants) -> None:
         self.rocket_meteor_cache = {}
+        self.constants = constants
 
     def simulate(
         self, current_time: float, bounds: physics.Bounds,
-        rockets: List[Projectile], meteors: List[Meteor],
-        predicted_spawns: Iterable[physics.SpawnableMeteor]) -> List[Hit]:
+        rockets: List[Projectile], meteors: List[Meteor]) -> List[Hit]:
         rockets = list(rockets)
-        meteors = list(meteors)
-        spawns = list(predicted_spawns)
+        meteors = [physics.SpawnableMeteor.from_meteor(m) for m in meteors]
         hits = []
-        while rockets:
+        while True:
             next_hit = None
             for rocket in list(rockets):
-                any_hit = False
                 for meteor in meteors:
+                    meteor = meteor.rewind_for_physics(current_time)
                     delta_t = self._rocket_meteor_collision_time(rocket, meteor)
+                    if delta_t is None:
+                        continue
+                    delta_t = meteor.hit_time_delta_post_spawn(
+                        current_time, delta_t, rocket)
                     if delta_t is None:
                         continue
                     if (bounds.is_out(rocket.advance(delta_t)) and
@@ -37,37 +40,19 @@ class Simulation:
                         continue
                     any_hit = True
                     if not next_hit or delta_t < next_hit.delta_t:
-                        next_hit = Hit(
-                            delta_t, physics.SpawnableMeteor.from_meteor(meteor),
-                            rocket.id)
-                for spawn in spawns:
-                    # TODO: consider speed distribution, not just avg
-                    instance = dataclasses.replace(spawn)
-                    instance = instance.rewind_for_physics(current_time)
-                    delta_t = physics.next_collision_time(rocket, instance)
-                    if delta_t is None:
-                        continue
-                    if not spawn.is_valid_hit(current_time + delta_t):
-                        continue
-                    if (bounds.is_out(rocket.advance(delta_t)) and
-                        bounds.is_out(instance.advance(delta_t))):
-                        continue
-                    any_hit = True
-                    if not next_hit or delta_t < next_hit.delta_t:
-                        next_hit = Hit(delta_t, spawn, rocket.id)
-                if not any_hit:
-                    rockets.remove(rocket)
-            # TODO: predict spawns within simulation!
+                        next_hit = Hit(delta_t, meteor, rocket.id)
             if next_hit:
-                if next_hit.victim.is_future_meteor():
-                    spawn = next(s for s in spawns if s.id == next_hit.victim.id)
-                    spawns.remove(spawn)
-                else:
-                    meteor = next(m for m in meteors if m.id == next_hit.victim.id)
-                    meteors.remove(meteor)
+                meteor = next(m for m in meteors if m.id == next_hit.victim.id)
+                meteors.remove(meteor)
                 rocket = next(r for r in rockets if r.id == next_hit.rocket_id)
                 rockets.remove(rocket)
                 hits.append(next_hit)
+                meteors.extend(physics.expect_explosions(
+                    rocket.advance(next_hit.delta_t),
+                    next_hit.victim.advance(next_hit.delta_t),
+                    current_time + next_hit.delta_t, self.constants))
+            else:
+                break
         return hits
 
     def _rocket_meteor_collision_time(self,

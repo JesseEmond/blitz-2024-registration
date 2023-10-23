@@ -21,10 +21,9 @@ class TargetPicker:
 
     def pick_target(
         self, cannon: Cannon, rockets: List[Projectile],
-        meteors: List[Meteor],
-        expected_spawns: Iterable[physics.SpawnableMeteor],
-        targets: List[target_tracker.Target], constants: Constants,
-        bounds: physics.Bounds, tick: int) -> Optional[PickedTarget]:
+        meteors: List[Meteor], targets: List[target_tracker.Target],
+        constants: Constants, bounds: physics.Bounds,
+        tick: int) -> Optional[PickedTarget]:
         if not targets:
             self.info('No available targets to shoot at')
         self.rank_candidates(tick, targets, constants, bounds)
@@ -51,31 +50,19 @@ class TargetPicker:
             if hit_time >= TOTAL_TICKS:
                 self.info(f'Can not reach target in time: {hit_time}')
                 continue
-            sim = simulation.Simulation()
+            sim = simulation.Simulation(constants)
             sim_rockets = rockets + [rocket]
-            hits = sim.simulate(tick, bounds, sim_rockets, meteors,
-                                expected_spawns)
+            hits = sim.simulate(tick, bounds, sim_rockets, meteors)
             my_hit = next((hit for hit in hits if hit.rocket_id == rocket.id),
                           None)
             if not my_hit or my_hit.victim.id != target.victim.id:
-                self.info('Would hit other meteor before reaching target: {my_hit}')
+                self.info(f'Would hit other meteor before reaching target: {my_hit}')
                 continue
-            if tick+my_hit.delta_t != hit_time:
-                print('Note: ', target.victim.id)
-                print('sim collision delta t:')
-                print(my_hit.delta_t)
-                print(rocket)
-                print(physics.next_collision_time(rocket, target.victim))
-                print('aim at moving target delta t:')
-                dbgtimes = physics.rocket_target_collision_times(cannon.position, target.victim, constants.rockets.speed)
-                for dbgt in dbgtimes:
-                    tt = target.victim.advance(dbgt).position
-                    dbgrckd = tt.minus(cannon.position).normalized()
-                    dbgr = Body(position=cannon.position, velocity=dbgrckd.scale(constants.rockets.speed), size=constants.rockets.size)
-                    print(collision.delta_t)
-                    print(dbgr)
-                    print(physics.next_collision_time(dbgr, target.victim))
-            assert tick+my_hit.delta_t == hit_time, (tick, my_hit.delta_t, tick+my_hit.delta_t, hit_time, my_hit)
+            # The following has been helpful to find simulation bugs, keeping it
+            assert abs(tick+my_hit.delta_t - hit_time) < 1e-5, (tick, my_hit.delta_t, tick+my_hit.delta_t, hit_time, my_hit)
+            # Update target to the simulated target, to take into account physics
+            # of future spawn targets.
+            target.victim = my_hit.victim
             target.hit_time = hit_time
             return PickedTarget(target, collision.target, rocket)
         return None
@@ -84,15 +71,17 @@ class TargetPicker:
         self, current_time: float, targets: List[target_tracker.Target],
         constants: Constants, bounds: physics.Bounds) -> None:
         def _score(target: target_tracker.Target):
+            riskiness = 1 if target.victim.is_future_meteor() else 0
             score = constants.meteorInfos[target.victim.meteorType].score
             time = physics.time_until_out_of_bounds(target.victim, bounds)
             if target.victim.is_future_meteor():
                 delta_t = target.victim.spawn_time - current_time
                 time += delta_t
             # Prio:
+            # - real meteors, instead of predicted ones
             # - higher score (-score)
             # - time left until it exits the area (more urgent)
-            return (-score, time)
+            return (riskiness, -score, time)
         targets.sort(key=_score)
 
     def aim_ahead(self, tick: float, cannon: Cannon,

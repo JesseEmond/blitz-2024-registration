@@ -118,8 +118,11 @@ class TargetTracker(game_events.Listener):
             self.rocket_targets[rocket.id] = new_target
             # Regenerate the expected explosions
             self.dont_expect_spawns(new_target.victim.id)
+            assert new_target.hit_time >= current_time, (new_target.hit_time, current_time)
+            delta_t = new_target.hit_time - current_time
             explosions = physics.expect_explosions(
-                rocket, new_target.victim, new_target.hit_time, self.constants)
+                rocket.advance(delta_t), new_target.victim.advance(delta_t),
+                new_target.hit_time, self.constants)
             for explosion in explosions:
                 print(f'(EXPL) Predict meteor {new_target.victim.id} to explode '
                       f'into {explosion.id} at t={new_target.hit_time:.2f}')
@@ -147,11 +150,10 @@ class TargetTracker(game_events.Listener):
             self.dont_expect_spawns(child.id)
 
     def refresh_assignments(self, game: GameMessage) -> None:
-        sim = simulation.Simulation()
+        sim = simulation.Simulation(self.constants)
         seen_rockets = set()
         time = game.tick
-        hits = sim.simulate(time, self.bounds, game.rockets, game.meteors,
-                            self.predicted_spawns.values())
+        hits = sim.simulate(time, self.bounds, game.rockets, game.meteors)
         for hit in hits:
             seen_rockets.add(hit.rocket_id)
             target = self.rocket_targets.get(hit.rocket_id)
@@ -159,14 +161,14 @@ class TargetTracker(game_events.Listener):
             if target_id != hit.victim.id:
                 new_target = Target(hit.victim, time + hit.delta_t)
                 rocket = next(r for r in game.rockets if r.id == hit.rocket_id)
-                self.change_target(time, rocket, new_target)
                 self.stats.record_changed_target(hit.rocket_id, target_id,
                                                  hit.victim.id)
+                self.change_target(time, rocket, new_target)
         missing_rockets = set(self.rocket_targets.keys()) - seen_rockets
         for rocket_id in missing_rockets:
             target_id = self.rocket_targets[rocket_id].victim.id
-            self.stats.record_changed_target(rocket_id, target_id, None)
             rocket = next(r for r in game.rockets if r.id == rocket_id)
+            self.stats.record_changed_target(rocket_id, target_id, None)
             self.change_target(time, rocket, None)
             del self.rocket_targets[rocket_id]
 
