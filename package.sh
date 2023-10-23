@@ -1,2 +1,2 @@
 #!/bin/sh
-zip -r bot.zip bot -x 'bot/__pycache__/**' -x '*.swp'
+zip -r bot.zip bot -x 'bot/__pycache__/**' -x '*.swp' -x 'bot/.pytype/**'
