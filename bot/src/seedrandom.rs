@@ -1,13 +1,13 @@
 // Rust version of https://github.com/davidbau/seedrandom/blob/released/seedrandom.js
 
-struct SeedRandom {
+pub struct SeedRandom {
     i: u8,
     j: u8,
     state: [u8; 256],
 }
 
 impl SeedRandom {
-    fn from_seed(seed: &[u8]) -> Self {
+    pub fn from_seed(seed: &[u8]) -> Self {
         let mask = 0xFF;
         let mut state = [0u8; 256];
         for i in 0u8..=255u8 {
@@ -53,25 +53,25 @@ impl SeedRandom {
         x
     }
 
-    fn random(&mut self) -> f64 {
+    pub fn random(&mut self) -> f64 {
         let chunks: u8 = 6;
-        let startdenom = 256u64.pow(chunks as u32);
-        let significance = 1 << 52;
+        let startdenom = (256u64.pow(chunks as u32)) as f64;
+        let significance = 1u64 << 52;
         let overflow = significance << 1;
-        let mut n = self.get_n(chunks);
-        let mut d = startdenom;
-        let mut x = 0;
-        while n < significance {
-            n = (n + x) * 256;
-            d *= 256;
-            x = self.get() as u64;
+        let mut n = self.get_n(chunks) as f64;
+        let mut d = startdenom as f64;
+        let mut x = 0u8;
+        while (n as u64) < significance {
+            n = (n + x as f64) * 256.0;
+            d *= 256.0;
+            x = self.get();
         }
-        while n >= overflow {
-            n /= 2;
-            d /= 2;
+        while (n as u64) >= overflow {
+            n /= 2.0;
+            d /= 2.0;
             x >>= 1;
         }
-        (n + x) as f64 / (d as f64)
+        (n + x as f64) / d
     }
 }
 
@@ -80,7 +80,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_seedrandom() {
+    fn test_seedrandom_observed_seed() {
         // Values generated via node.js program that calls
         // seedrandom('Stardreamer') and generates 5 random() outputs.
         let mut rng = SeedRandom::from_seed(b"Stardreamer");
@@ -89,5 +89,17 @@ mod tests {
         assert_eq!(rng.random(), 0.9131123861925614);
         assert_eq!(rng.random(), 0.5748264151575112);
         assert_eq!(rng.random(), 0.8330147977410588);
+    }
+
+    #[test]
+    fn test_seedrandom_known_seed() {
+        // Same as above, but using a test seed that was causing overflowing
+        // panics, unlike the above.
+        // Values generated via node.js program that calls
+        // seedrandom('wrong seed') and generates 3 random() outputs.
+        let mut rng = SeedRandom::from_seed(b"wrong seed");
+        assert_eq!(rng.random(), 0.01010590597178273);
+        assert_eq!(rng.random(), 0.5169293551685266);
+        assert_eq!(rng.random(), 0.28678707939605014);
     }
 }

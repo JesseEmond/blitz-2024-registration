@@ -17,12 +17,11 @@ import target_tracker
 
 class Bot:
     def __init__(self, on_server: bool):
-        # TODO remove
-        print(nostradamus.hello_world(42))
         self.verbose = on_server
         debug_mode = not on_server
         self.constants = None
         self.bounds = None
+        self.nostradamus = None
 
         self.asserter = asserter.Asserter(debug_mode)
         self.events = game_events.GameEvents()
@@ -50,6 +49,18 @@ class Bot:
             self.bounds = physics.Bounds(game.cannon, game.constants.world)
             self.events.first_tick(self.constants, self.bounds)
             self.info(f'Constants: {self.constants}')
+
+        if not self.nostradamus and game.meteors:
+            # TODO: print something
+            first_meteor = game.meteors[0]
+            init = nostradamus.NostradamusInit(
+                game_width=game.constants.world.width,
+                game_height=game.constants.world.height,
+                large_meteor_speed=game.constants.meteorInfos[MeteorType.Large].approximateSpeed,
+                first_meteor_pos=(first_meteor.position.x, first_meteor.position.y),
+                first_meteor_vel=(first_meteor.velocity.x, first_meteor.velocity.y))
+            self.nostradamus = nostradamus.Nostradamus(init)
+
 
         self.events.update(game)
         self.tracker.refresh_assignments(game)
