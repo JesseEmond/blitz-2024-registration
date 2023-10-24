@@ -8,3 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.20.0", features = ["extension-module"] }
+rc4 = "0.1.0"

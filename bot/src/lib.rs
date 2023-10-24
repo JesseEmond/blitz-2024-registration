@@ -1,4 +1,7 @@
 extern crate pyo3;
+extern crate rc4;
+
+mod seedrandom;
 
 use pyo3::prelude::*;
 
