@@ -8,6 +8,7 @@ from actions import *
 import asserter
 import game_events
 import invariants
+import nostradamus
 import physics
 import stats
 import target_picker
@@ -16,6 +17,8 @@ import target_tracker
 
 class Bot:
     def __init__(self, on_server: bool):
+        # TODO remove
+        print(nostradamus.hello_world(42))
         self.verbose = on_server
         debug_mode = not on_server
         self.constants = None
