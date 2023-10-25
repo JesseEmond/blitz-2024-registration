@@ -108,9 +108,11 @@ impl GameRandom {
         for seed in seeds {
             let mut rng = SeedRandom::from_seed(seed);
             let mut game_rand = Self::new(rng);
+            let start_state = game_rand.save_state();
             let spawn = game_rand.next_spawn(&game.constants);
             if spawn.pos.within_range(&pos, FLOAT_EQ_EPS) &&
                spawn.vel.within_range(&vel, FLOAT_EQ_EPS) {
+                game_rand.restore_state(start_state);
                 return Some(game_rand);
             }
         }
@@ -121,12 +123,13 @@ impl GameRandom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game_message::{Constants, GameMessage, Meteor, Projectile, Vector};
+    use crate::game_message::{GameMessage, Meteor, Vector};
 
-    #[test]
-    fn test_fixed_seed() {
-        // Values taken from running a game with seed 'MyTestSeed' and printing
-        // the first visible meteor.
+    const FIXED_SEED: &[u8] = b"MyTestSeed";
+
+    /// Creates the first tick GameMessage (partial) of a fixed seed
+    /// 'MyTestSeed' (FIXED_SEED), obtained by printing a game ran locally.
+    fn fixed_seed_game() -> GameMessage {
         let mut game: GameMessage = Default::default();
         game.constants.world.width = 1200;
         game.constants.world.height = 800;
@@ -142,8 +145,28 @@ mod tests {
             y: 0.38210405704085765f64
         };
         game.meteors.push(meteor);
+        game
+    }
+
+    #[test]
+    fn test_infer_from_seeds_known_seed() {
         assert!(GameRandom::infer_from_seeds(
-            &game, &[b"wrong seed", b"still wrong", b"MyTestSeed"]
+            &fixed_seed_game(), &[b"wrong seed", b"still wrong", FIXED_SEED]
             ).is_some());
+    }
+
+    #[test]
+    fn test_infer_from_seeds_rewinds_random() {
+        let game = fixed_seed_game();
+        let mut random = GameRandom::infer_from_seeds(&game, &[FIXED_SEED])
+            .unwrap();
+        // Check that the first spawn gives the same meteor, again.
+        let spawn = random.next_spawn(&game.constants);
+        let pos: Vec2 = game.meteors[0].projectile.position.into();
+        let vel: Vec2 = game.meteors[0].projectile.velocity.into();
+        assert!(spawn.pos.within_range(&pos, FLOAT_EQ_EPS),
+            "Spawn pos: {:?} vs. expected {:?}", spawn.pos, pos);
+        assert!(spawn.vel.within_range(&vel, FLOAT_EQ_EPS),
+            "Spawn vel: {:?} vs. expected {:?}", spawn.vel, vel);
     }
 }
