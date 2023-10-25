@@ -24,6 +24,11 @@ function vercel_pkg_run_node() {
 function disassemble_js_files() {
     basepath=$1
     for file in "${basepath?}/"*.js; do
+        if [[ "$file" == *.disass.js ]]; then
+            # Don't disassemble previous outputs of this script (we'll replace
+            # those anyway).
+            continue
+        fi
         output="${file%.js}.disass.js"
         "${patched_node}" ./disassemble_unpacked.js "$file" > "${output}"
     done
