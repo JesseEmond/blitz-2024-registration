@@ -8,12 +8,42 @@ pub struct MeteorSpawn {
     vel: Vec2,
 }
 
-pub struct GameRandom {
+struct RandomPool {
     rng: SeedRandom,
     // Pool of generated random numbers. Used to go forward/backward in history.
-    rand_pool: Vec<f64>,
-    // Index within the rand pool.
-    current_rand: usize,
+    pool: Vec<f64>,
+    // Index within the pool.
+    index: usize,
+}
+
+impl RandomPool {
+    fn new(mut rng: SeedRandom) -> Self {
+        let pool = vec![rng.random()];
+        Self { rng, pool, index: 0 }
+    }
+
+    fn next_random(&mut self) -> f64 {
+        let out = self.pool[self.index];
+        self.index += 1;
+        if self.index == self.pool.len() {
+            // TODO: Generate a chunk instead of just 1?
+            self.pool.push(self.rng.random());
+        }
+        out
+    }
+
+    fn save(&self) -> usize {
+        self.index
+    }
+
+    fn restore(&mut self, saved: usize) {
+        assert!(saved < self.pool.len());
+        self.index = saved;
+    }
+}
+
+pub struct GameRandom {
+    pool: RandomPool,
 }
 
 const OBSERVED_SEEDS: &[&[u8]] = &[b"Stardreamer"];
@@ -23,10 +53,7 @@ const FLOAT_EQ_EPS: f64 = 1e-8;
 
 impl GameRandom {
     pub fn new(mut rng: SeedRandom) -> Self {
-        GameRandom {
-            rng, rand_pool: Vec::new(),
-            current_rand: 0
-        }
+        Self { pool: RandomPool::new(rng) }
     }
 
     pub fn next_spawn(
@@ -34,17 +61,17 @@ impl GameRandom {
         large_meteor_speed: f64) -> MeteorSpawn {
         let mut pos = Vec2 {
             x: (game_width + 50) as f64,
-            y: (game_height as f64) * self.rng.random(),
+            y: (game_height as f64) * self.pool.next_random(),
         };
         // Note that this 'r' is effectively useless, since Meteor Build will
         // rescale it based on 'speed' +- noise, but we include it to keep the
         // same number of 'random()' calls.
-        let r = self.rng.random() * 50f64 + 50f64;
+        let r = self.pool.next_random() * 50f64 + 50f64;
         let degrees = 180f64 - METEOR_GENERATION_CONE_ANGLE / 2f64
-              + self.rng.random() * METEOR_GENERATION_CONE_ANGLE;
+              + self.pool.next_random() * METEOR_GENERATION_CONE_ANGLE;
         let mut vel = Vec2::from_polar(r, degrees.to_radians());
         // The following is done as part of Meteor Build
-        let multiplier = self.rng.random() * 0.4 + 0.8;  // +- 20%
+        let multiplier = self.pool.next_random() * 0.4 + 0.8;  // +- 20%
         vel = vel.normalized().scale(large_meteor_speed * multiplier);
         pos = pos.add(&vel);  // update is called right after spawn
         MeteorSpawn { pos: pos, vel: vel }
@@ -52,29 +79,14 @@ impl GameRandom {
 
     // TODO: add next_splits
 
-    fn next_random(&mut self) -> f64 {
-        if self.current_rand < self.rand_pool.len() {
-            let out = self.rand_pool[self.current_rand];
-            self.current_rand += 1;
-            out
-        } else {
-            // TODO: generate in chunks?
-            let out = self.rng.random();
-            self.rand_pool.push(out);
-            self.current_rand += 1;
-            out
-        }
-    }
-
-    /// Save the state of the randomness, to 'restore' later.
+    /// Save the state of the randomness, to 'restore_state' later.
     pub fn save_state(&self) -> usize {
-        self.current_rand
+        self.pool.save()
     }
 
     /// Restore a saved random state.
     pub fn restore_state(&mut self, saved_state: usize) {
-        assert!(saved_state < self.rand_pool.len());
-        self.current_rand = saved_state;
+        self.pool.restore(saved_state);
     }
 
     pub fn infer_from_known_seeds(
