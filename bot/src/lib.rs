@@ -6,6 +6,7 @@ extern crate serde_json;
 mod game_message;
 mod game_random;
 mod seedrandom;
+mod spawn_schedule;
 mod vec2;
 
 use pyo3::prelude::*;

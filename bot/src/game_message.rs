@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Result;
 use std::collections::HashMap;
 
+pub const MAX_TICKS: u16 = 1000;
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GameMessage {
