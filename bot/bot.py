@@ -1,3 +1,5 @@
+import cattrs
+import json
 import math
 import time
 from typing import List, Optional, Tuple
@@ -47,20 +49,10 @@ class Bot:
         if not self.constants:
             self.constants = game.constants
             self.bounds = physics.Bounds(game.cannon, game.constants.world)
+            # TODO: print something
+            self.nostradamus = nostradamus.Nostradamus(json.dumps(cattrs.unstructure(game)))
             self.events.first_tick(self.constants, self.bounds)
             self.info(f'Constants: {self.constants}')
-
-        if not self.nostradamus and game.meteors:
-            # TODO: print something
-            first_meteor = game.meteors[0]
-            init = nostradamus.NostradamusInit(
-                game_width=game.constants.world.width,
-                game_height=game.constants.world.height,
-                large_meteor_speed=game.constants.meteorInfos[MeteorType.Large].approximateSpeed,
-                first_meteor_pos=(first_meteor.position.x, first_meteor.position.y),
-                first_meteor_vel=(first_meteor.velocity.x, first_meteor.velocity.y))
-            self.nostradamus = nostradamus.Nostradamus(init)
-
 
         self.events.update(game)
         self.tracker.refresh_assignments(game)

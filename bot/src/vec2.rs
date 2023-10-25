@@ -1,3 +1,5 @@
+use crate::game_message::Vector;
+
 #[derive(Debug, PartialEq)]
 pub struct Vec2 {
     pub x: f64,
@@ -44,5 +46,11 @@ impl Vec2 {
 
     pub fn within_range(&self, other: &Self, range: f64) -> bool {
         self.distance_sq(other) <= range * range
+    }
+}
+
+impl From<Vector> for Vec2 {
+    fn from(vec: Vector) -> Self {
+        Self { x: vec.x, y: vec.y }
     }
 }

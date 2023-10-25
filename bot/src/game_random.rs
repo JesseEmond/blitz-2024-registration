@@ -1,5 +1,6 @@
 // Based on known possible server seeds, infer what seed was picked (and the RNG
 // state) based on the first observed meteor.
+use crate::game_message::{Constants, GameMessage, MeteorType};
 use crate::seedrandom::SeedRandom;
 use crate::vec2::Vec2;
 
@@ -56,12 +57,10 @@ impl GameRandom {
         Self { pool: RandomPool::new(rng) }
     }
 
-    pub fn next_spawn(
-        &mut self, game_width: usize, game_height: usize,
-        large_meteor_speed: f64) -> MeteorSpawn {
+    pub fn next_spawn(&mut self, constants: &Constants) -> MeteorSpawn {
         let mut pos = Vec2 {
-            x: (game_width + 50) as f64,
-            y: (game_height as f64) * self.pool.next_random(),
+            x: (constants.world.width + 50) as f64,
+            y: (constants.world.height as f64) * self.pool.next_random(),
         };
         // Note that this 'r' is effectively useless, since Meteor Build will
         // rescale it based on 'speed' +- noise, but we include it to keep the
@@ -71,6 +70,8 @@ impl GameRandom {
               + self.pool.next_random() * METEOR_GENERATION_CONE_ANGLE;
         let mut vel = Vec2::from_polar(r, degrees.to_radians());
         // The following is done as part of Meteor Build
+        let large_meteor_info = &constants.meteor_infos[&MeteorType::Large];
+        let large_meteor_speed = large_meteor_info.approximate_speed;
         let multiplier = self.pool.next_random() * 0.4 + 0.8;  // +- 20%
         vel = vel.normalized().scale(large_meteor_speed * multiplier);
         pos = pos.add(&vel);  // update is called right after spawn
@@ -89,29 +90,27 @@ impl GameRandom {
         self.pool.restore(saved_state);
     }
 
-    pub fn infer_from_known_seeds(
-        game_width: usize, game_height: usize, large_meteor_speed: f64,
-        first_meteor_pos: &Vec2, first_meteor_vel: &Vec2) -> Self {
-        Self::infer_from_seeds(game_width, game_height, large_meteor_speed,
-                               first_meteor_pos, first_meteor_vel, OBSERVED_SEEDS)
+    pub fn infer_from_known_seeds(game: &GameMessage) -> Self {
+        Self::infer_from_seeds(game, OBSERVED_SEEDS)
             .unwrap_or_else(|| panic!(
                 "Did not recover seed. First meteor pos: {:?} vel: {:?}. \
                 Check server game logs and update OBSERVED_SEEDS in file \
                 'game_random.rs'.",
-                first_meteor_pos, first_meteor_vel))
+                game.meteors[0].projectile.position,
+                game.meteors[0].projectile.velocity))
     }
 
-    pub fn infer_from_seeds(
-        game_width: usize, game_height: usize, large_meteor_speed: f64,
-        first_meteor_pos: &Vec2, first_meteor_vel: &Vec2,
-        seeds: &[&[u8]]) -> Option<Self> {
+    pub fn infer_from_seeds(game: &GameMessage,
+                            seeds: &[&[u8]]) -> Option<Self> {
+        let first_meteor = &game.meteors[0].projectile;
+        let pos: Vec2 = first_meteor.position.into();
+        let vel: Vec2 = first_meteor.velocity.into();
         for seed in seeds {
             let mut rng = SeedRandom::from_seed(seed);
             let mut game_rand = Self::new(rng);
-            let spawn = game_rand.next_spawn(
-                game_width, game_height, large_meteor_speed);
-            if spawn.pos.within_range(first_meteor_pos, FLOAT_EQ_EPS) &&
-               spawn.vel.within_range(first_meteor_vel, FLOAT_EQ_EPS) {
+            let spawn = game_rand.next_spawn(&game.constants);
+            if spawn.pos.within_range(&pos, FLOAT_EQ_EPS) &&
+               spawn.vel.within_range(&vel, FLOAT_EQ_EPS) {
                 return Some(game_rand);
             }
         }
@@ -122,16 +121,29 @@ impl GameRandom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game_message::{Constants, GameMessage, Meteor, Projectile, Vector};
 
     #[test]
     fn test_fixed_seed() {
         // Values taken from running a game with seed 'MyTestSeed' and printing
         // the first visible meteor.
+        let mut game: GameMessage = Default::default();
+        game.constants.world.width = 1200;
+        game.constants.world.height = 800;
+        game.constants.meteor_infos.insert(MeteorType::Large, Default::default());
+        game.constants.meteor_infos.get_mut(&MeteorType::Large).unwrap().approximate_speed = 3.0;
+        let mut meteor: Meteor = Default::default();
+        meteor.projectile.position = Vector {
+            x: 1247.2816883263476f64,
+            y: 793.7791526132554f64
+        };
+        meteor.projectile.velocity = Vector {
+            x: -2.718311673652447f64,
+            y: 0.38210405704085765f64
+        };
+        game.meteors.push(meteor);
         assert!(GameRandom::infer_from_seeds(
-            1200, 800, 3.0,
-            &Vec2::new(1247.2816883263476f64, 793.7791526132554f64),
-            &Vec2::new(-2.718311673652447f64, 0.38210405704085765f64),
-            &[b"wrong seed", b"still wrong", b"MyTestSeed"]
+            &game, &[b"wrong seed", b"still wrong", b"MyTestSeed"]
             ).is_some());
     }
 }
