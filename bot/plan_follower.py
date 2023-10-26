@@ -53,6 +53,18 @@ class PlanFollower(game_events.Listener):
 
     def on_hit(self, events: game_events.GameEvents, rocket_id: str,
                meteor_id: str, collision_time: float) -> None:
+        # TODO TEMPORARY, remove as soon as spawns are simulated
+        self.asserter.expect(
+            events.meteors[meteor_id].meteorType == MeteorType.Large,
+            f'Meteor hit of non-large meteor not supported yet: {events.meteors[meteor_id]}')
+        self.asserter.expect(
+            self.plan and self.plan[0].event_type == 'Hit',
+            f'Missing hit of {meteor_id} by {rocket_id}, Plan: {self.plan[:3]}')
+        event = self.plan.pop(0)
+        self.asserter.expect(
+            event.rocket_id == rocket_id and event.meteor_id == meteor_id,
+            f'Predicted rocket {event.rocket_id} hit on {event.meteor_id}, got '
+            f'{rocket_id} hit on {meteor_id}')
         self.asserter.expect(
             self.rocket_targets[rocket_id] == meteor_id,
             f'Rocket {rocket_id} did not hit the intended '
