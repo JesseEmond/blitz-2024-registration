@@ -16,7 +16,6 @@ use pyo3::exceptions::PyValueError;
 use crate::game_message::GameMessage;
 use crate::game_random::GameRandom;
 use crate::planner::{Event, EventInfo, Planner};
-use crate::vec2::Vec2;
 
 #[pyclass]
 pub struct Nostradamus {
@@ -40,7 +39,7 @@ impl Nostradamus {
     pub fn plan(&mut self) -> Vec<PlanEvent> {
         let planner = Planner {};
         let state = self.random.save_state();
-        let first_id: u16 = self.game_first_tick.meteors[0].projectile.id
+        let first_id: u32 = self.game_first_tick.meteors[0].projectile.id
             .parse().unwrap();
         let events = planner.plan(&self.game_first_tick.constants, first_id,
                                   &mut self.random);
@@ -69,16 +68,6 @@ pub struct MeteorSpawn {
     pub velocity: (f64, f64),
 }
 
-impl MeteorSpawn {
-    fn new(tick: u16, id: u16, pos: Vec2, vel: Vec2) -> (Self, EventBase) {
-        (MeteorSpawn {
-            id: id.to_string(),
-            position: (pos.x, pos.y),
-            velocity: (vel.x, vel.y),
-        }, EventBase { tick, event_type: "MeteorSpawn".to_string() })
-    }
-}
-
 #[pymethods]
 impl MeteorSpawn {
     fn __repr__(&self) -> String {
@@ -87,14 +76,40 @@ impl MeteorSpawn {
     }
 }
 
+#[pyclass(extends=EventBase, subclass)]
+pub struct MeteorMiss {
+    #[pyo3(get)]
+    pub id: String,
+}
+
+#[pymethods]
+impl MeteorMiss {
+    fn __repr__(&self) -> String {
+        format!("MeteorMiss(id={})", self.id)
+    }
+}
+
 impl IntoPy<PyObject> for PlanEvent {
     fn into_py(self, py: Python<'_>) -> PyObject {
-        let (subclass, baseclass) = match self.0.info {
-            EventInfo::MeteorSpawn { id, pos, vel } => MeteorSpawn::new(self.0.tick, id, pos, vel),
-        };
-        let initializer = PyClassInitializer::from(baseclass)
-            .add_subclass(subclass);
-        Py::new(py, initializer).unwrap().into_py(py)
+        match self.0.info {
+            EventInfo::MeteorSpawn { id, pos, vel } => {
+                Py::new(py, PyClassInitializer::from(EventBase {
+                    tick: self.0.tick,
+                    event_type: "MeteorSpawn".to_string()
+                }).add_subclass(MeteorSpawn {
+                    id: id.to_string(),
+                    position: (pos.x, pos.y),
+                    velocity: (vel.x, vel.y)
+                })).unwrap().into_py(py)
+            },
+            EventInfo::MeteorMiss { id } => {
+                Py::new(py, PyClassInitializer::from(EventBase {
+                    tick: self.0.tick,
+                    event_type: "MeteorMiss".to_string()
+                }).add_subclass(MeteorMiss { id: id.to_string(), }))
+                .unwrap().into_py(py)
+            },
+        }
     }
 }
 

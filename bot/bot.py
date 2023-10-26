@@ -37,7 +37,7 @@ class Bot:
         self.events.add_listener(self.asserter)
         self.events.add_listener(self.stats)
         self.events.add_listener(self.plan_follower)
-        self.events.add_listener(self.tracker)
+        # self.events.add_listener(self.tracker)
         self.events.add_listener(invariants.Invariants(self.asserter))
 
     def info(self, s: str) -> None:
@@ -77,9 +77,10 @@ class Bot:
         else:
             actions = self.plan_follower.get_actions(game.tick)
 
-        shooting = any(a for a in actions if isinstance(a, ShootAction))
-        if game.cannon.cooldown == 0 and not shooting:
-            self.stats.record_idle_tick()
+        # TODO: Restore! Removing until shooting is brought back, to reduce spam
+        # shooting = any(a for a in actions if isinstance(a, ShootAction))
+        # if game.cannon.cooldown == 0 and not shooting:
+        #     self.stats.record_idle_tick()
 
         tick_time = time.time() - start_time
         self.stats.record_tick_time(tick_time)

@@ -13,7 +13,8 @@ pub struct Event {
 
 #[derive(Clone, Copy)]
 pub enum EventInfo {
-    MeteorSpawn { id: u16, pos: Vec2, vel: Vec2 },
+    MeteorSpawn { id: u32, pos: Vec2, vel: Vec2 },
+    MeteorMiss { id: u32 },
 }
 
 pub struct Planner {
@@ -21,7 +22,7 @@ pub struct Planner {
 
 impl Planner {
     pub fn plan(
-        &self, constants: &Constants, first_id: u16,
+        &self, constants: &Constants, first_id: u32,
         random: &mut GameRandom) -> Vec<Event> {
         let mut sim = Simulator::new(first_id);
         let mut events = Vec::new();
@@ -40,8 +41,8 @@ struct Meteor {
 
 struct State {
     tick: u16,
-    next_id: u16,
-    meteors: HashMap<u16, Meteor>,
+    next_id: u32,
+    meteors: HashMap<u32, Meteor>,
 }
 
 struct Simulator {
@@ -49,7 +50,7 @@ struct Simulator {
 }
 
 impl Simulator {
-    fn new(first_id: u16) -> Self {
+    fn new(first_id: u32) -> Self {
         Self {
             state: State { tick: 0, next_id: first_id, meteors: HashMap::new() }
         }
@@ -58,9 +59,26 @@ impl Simulator {
     fn run_tick(
         &mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<Event> {
         let mut events = Vec::new();
+        let next_tick = self.state.tick + 1;
         if is_spawn_tick(self.state.tick) {
             events.push(self.spawn_meteor(rng, constants));
         }
+        // TODO: check for collisions & handle them
+        self.state.meteors.retain(|id, meteor| {
+            meteor.pos = meteor.pos.add(&meteor.vel);
+            let keep = meteor_in_bounds_x(&meteor.pos)
+                && in_bounds_y(constants, &meteor.pos);
+            if !keep {
+                events.push(Event {
+                    // Note: miss will be noticed on the incremented tick
+                    tick: next_tick,
+                    info: EventInfo::MeteorMiss { id: *id },
+                });
+            }
+            keep
+        });
+        // TODO: update rockets
+        // TODO: rockets in bounds x/y
         self.state.tick += 1;
         events
     }
@@ -90,4 +108,14 @@ impl Simulator {
     fn is_done(&self) -> bool {
         self.state.tick == MAX_TICKS
     }
+}
+
+fn meteor_in_bounds_x(pos: &Vec2) -> bool {
+    // Note: server does not check the right side, confirmed via reversing the
+    // local challenge binary.
+    pos.x >= 0.0
+}
+
+fn in_bounds_y(constants: &Constants, pos: &Vec2) -> bool {
+    pos.y >= 0.0 && pos.y < constants.world.height as f64
 }

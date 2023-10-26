@@ -58,7 +58,7 @@ impl GameRandom {
     }
 
     pub fn next_spawn(&mut self, constants: &Constants) -> MeteorSpawn {
-        let mut pos = Vec2 {
+        let pos = Vec2 {
             x: (constants.world.width + 50) as f64,
             y: (constants.world.height as f64) * self.pool.next_random(),
         };
