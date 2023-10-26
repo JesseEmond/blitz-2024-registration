@@ -5,8 +5,8 @@ use crate::seedrandom::SeedRandom;
 use crate::vec2::Vec2;
 
 pub struct MeteorSpawn {
-    pos: Vec2,
-    vel: Vec2,
+    pub pos: Vec2,
+    pub vel: Vec2,
 }
 
 struct RandomPool {
@@ -53,7 +53,7 @@ const METEOR_GENERATION_CONE_ANGLE: f64 = 30f64;
 const FLOAT_EQ_EPS: f64 = 1e-8;
 
 impl GameRandom {
-    pub fn new(mut rng: SeedRandom) -> Self {
+    pub fn new(rng: SeedRandom) -> Self {
         Self { pool: RandomPool::new(rng) }
     }
 
@@ -106,8 +106,7 @@ impl GameRandom {
         let pos: Vec2 = first_meteor.position.into();
         let vel: Vec2 = first_meteor.velocity.into();
         for seed in seeds {
-            let mut rng = SeedRandom::from_seed(seed);
-            let mut game_rand = Self::new(rng);
+            let mut game_rand = Self::new(SeedRandom::from_seed(seed));
             let start_state = game_rand.save_state();
             let spawn = game_rand.next_spawn(&game.constants);
             if spawn.pos.within_range(&pos, FLOAT_EQ_EPS) &&

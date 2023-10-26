@@ -154,7 +154,7 @@ mod tests {
             ],
             "score": 42
         }"#;
-        let game_message: GameMessage = serde_json::from_str(data)?;
+        let _game_message: GameMessage = serde_json::from_str(data)?;
         Ok(())
     }
 }
