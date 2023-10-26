@@ -33,7 +33,11 @@ impl Vec2 {
 
     pub fn normalized(&self) -> Self {
         let len = self.len();
-        Self::new(self.x / len, self.y / len)
+        if len != 0.0 {
+            Self::new(self.x / len, self.y / len)
+        } else {
+            Self::new(0.0, 0.0)
+        }
     }
 
     pub fn scale(&self, s: f64) -> Self {

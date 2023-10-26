@@ -49,6 +49,10 @@ class PlanFollower(game_events.Listener):
             f'Expected rocket id {self.just_shot_id}, got {rocket_id}')
         self.just_shot_id = None
 
+    def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
+        self.asserter.expect(False,
+            f'Rocket {rocket_id} wiffed!, Plan: {self.plan[:1]}')
+
     def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
         self.asserter.expect(
             self.plan and self.plan[0].event_type == 'MeteorMiss',
