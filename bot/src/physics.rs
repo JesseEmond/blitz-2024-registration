@@ -26,7 +26,7 @@ fn solve_quadratic(a: f64, b: f64, c: f64) -> Option<(f64, f64)> {
     }
 }
 
-fn aim_ahead(source: &Vec2, rocket_speed: f64, target: &MovingCircle) -> Option<Vec2> {
+pub fn aim_ahead(source: &Vec2, rocket_speed: f64, target: &MovingCircle) -> Option<Vec2> {
     // TODO: is this optimal, or can taking into account when spheres intersect
     // produce faster hits?
     // https://gamedev.stackexchange.com/q/25277
@@ -34,13 +34,12 @@ fn aim_ahead(source: &Vec2, rocket_speed: f64, target: &MovingCircle) -> Option<
     let a = target.vel.dot(&target.vel) - rocket_speed * rocket_speed;
     let b = 2.0 * target.vel.dot(&delta_pos);
     let c = delta_pos.dot(&delta_pos);
-    println!("{}, {}, {}", a, b, c);
     let (t1, t2) = solve_quadratic(a, b, c)?;
     let t = if t1 < 0.0 { t2 } else { t1 };
     Some(target.pos.add(&target.vel.scale(t)))
 }
 
-fn collision_times(x: &MovingCircle, y: &MovingCircle) -> Option<(f64, f64)> {
+pub fn collision_times(x: &MovingCircle, y: &MovingCircle) -> Option<(f64, f64)> {
     let r = x.size + y.size;
     let a = (x.vel.len_sq() + y.vel.len_sq()) - 2.0 * x.vel.dot(&y.vel);
     let b = 2.0 * (x.pos.dot(&x.vel) + y.pos.dot(&y.vel)
@@ -49,7 +48,7 @@ fn collision_times(x: &MovingCircle, y: &MovingCircle) -> Option<(f64, f64)> {
     solve_quadratic(a, b, c)
 }
 
-fn make_intersection(x: &MovingCircle, y: &MovingCircle, t: f64) -> Intersection {
+pub fn make_intersection(x: &MovingCircle, y: &MovingCircle, t: f64) -> Intersection {
     let a = x.pos.add(&x.vel.scale(t));
     let b = y.pos.add(&x.vel.scale(t));
     let intersection = b.minus(&a).normalized().scale(x.size).add(&a);

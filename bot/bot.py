@@ -36,8 +36,10 @@ class Bot:
 
         self.events.add_listener(self.asserter)
         self.events.add_listener(self.stats)
-        self.events.add_listener(self.plan_follower)
-        # self.events.add_listener(self.tracker)
+        if use_py_bot:
+            self.events.add_listener(self.tracker)
+        else:
+            self.events.add_listener(self.plan_follower)
         self.events.add_listener(invariants.Invariants(self.asserter))
 
     def info(self, s: str) -> None:
@@ -66,7 +68,8 @@ class Bot:
             self.info(f'Constants: {self.constants}')
 
         self.events.update(game)
-        self.tracker.refresh_assignments(game)
+        if self.use_py_bot:
+            self.tracker.refresh_assignments(game)
 
 
         if not game.meteors:

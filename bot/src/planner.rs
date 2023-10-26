@@ -1,5 +1,6 @@
 use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
+use crate::physics::{aim_ahead, MovingCircle};
 use crate::simulate::{Event, GameState};
 use crate::vec2::Vec2;
 
@@ -12,14 +13,24 @@ impl Planner {
         random: &mut GameRandom) -> Vec<Event> {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
-        let mut did_shoot = false;
         while !state.is_done() {
             events.extend(state.run_tick(random, constants));
             
-            if !did_shoot {
-                // TODO: shoot on more than just the first tick
-                events.push(state.shoot(cannon, constants, &Vec2::new(200.0, 200.0), first_id));
-                did_shoot = true;
+            // TODO: smarter target picking
+            if state.can_shoot() && !state.meteors.is_empty() {
+                let (&target_id, meteor) = state.meteors.iter().next().unwrap();
+                let target = MovingCircle {
+                    pos: meteor.pos,
+                    vel: meteor.vel,
+                    size: constants.meteor_infos.get(&meteor.typ).unwrap().size,
+                };
+                let cannon_pos: Vec2 = cannon.position.into();
+                if let Some(aim) = aim_ahead(
+                    &cannon_pos,
+                    constants.rockets.speed,
+                    &target) {
+                    events.push(state.shoot(cannon, constants, &aim, target_id));
+                }
             }
         }
         events

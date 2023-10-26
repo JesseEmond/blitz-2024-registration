@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Result;
 use std::collections::HashMap;
 
 pub const MAX_TICKS: u16 = 1000;
@@ -96,6 +95,7 @@ pub struct ExplosionInfos {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Result;
 
     #[test]
     fn test_deserialize() -> Result<()> {

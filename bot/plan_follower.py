@@ -17,6 +17,7 @@ class PlanFollower(game_events.Listener):
         self.asserter = asserter_
         self.plan = None
         self.just_shot_id = None
+        self.rocket_targets = {}
 
     def assign_plan(self, plan: List[nostradamus.Event]) -> None:
         self.plan = plan
@@ -29,6 +30,7 @@ class PlanFollower(game_events.Listener):
             actions.append(LookAtAction(Vector(x, y)))
             if next_shot.tick == tick:
                 self.just_shot_id = next_shot.id
+                self.rocket_targets[next_shot.id] = next_shot.target_id
                 self.plan.pop(0)
                 actions.append(ShootAction())
         return actions
@@ -39,7 +41,7 @@ class PlanFollower(game_events.Listener):
             len(self.plan))
         return self.plan[:next_tick_idx]
 
-    def on_new_rocket(self, events: 'GameEvents', rocket_id: str) -> None:
+    def on_new_rocket(self, events: game_events.GameEvents, rocket_id: str) -> None:
         self.asserter.expect(
             self.just_shot_id is not None,
             f'Unexpected shot of: {rocket_id}, Plan: {self.plan[:1]}')
@@ -49,9 +51,18 @@ class PlanFollower(game_events.Listener):
             f'Expected rocket id {self.just_shot_id}, got {rocket_id}')
         self.just_shot_id = None
 
+    def on_hit(self, events: game_events.GameEvents, rocket_id: str,
+               meteor_id: str, collision_time: float) -> None:
+        self.asserter.expect(
+            self.rocket_targets[rocket_id] == meteor_id,
+            f'Rocket {rocket_id} did not hit the intended '
+            f'{self.rocket_targets[rocket_id]}, instead it hit {meteor_id}')
+
     def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         self.asserter.expect(False,
-            f'Rocket {rocket_id} wiffed!, Plan: {self.plan[:1]}')
+            f'Rocket {rocket_id} wiffed! '
+            f'Target was: {self.rocket_targets.get(rocket_id)} '
+            f'Plan: {self.plan[:1]}')
 
     def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
         self.asserter.expect(
@@ -61,6 +72,11 @@ class PlanFollower(game_events.Listener):
         self.asserter.expect(event.id == meteor_id,
             'Miss meteor ID was not predicted correctly. '
             f'Predicted {event.id} Got {meteor_id}')
+        targeted = next(
+            (r for r, m in self.rocket_targets.items() if m == meteor_id),
+            None)
+        self.asserter.expect(targeted is None,
+            f'Meteor {meteor_id} should have been hit by {targeted}')
 
     def on_meteor_spawn(self, events: game_events.GameEvents,
                         meteor_id: str) -> None:

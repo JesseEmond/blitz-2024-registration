@@ -23,15 +23,15 @@ pub enum EventInfo {
 pub struct GameState {
     tick: u16,
     next_id: u32,
-    meteors: HashMap<u32, Meteor>,
+    pub meteors: HashMap<u32, Meteor>,
     rockets: HashMap<u32, Rocket>,
     cooldown: u8,
 }
 
-struct Meteor {
-    pos: Vec2,
-    vel: Vec2,
-    typ: MeteorType,
+pub struct Meteor {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub typ: MeteorType,
 }
 
 struct Rocket {
@@ -92,7 +92,7 @@ impl GameState {
         let pos = Vec2::new(cannon.position.x, cannon.position.y);
         let vel = target.minus(&pos).normalized().scale(constants.rockets.speed);
         self.rockets.insert(id, Rocket { pos, vel });
-        self.cooldown = cannon.cooldown;
+        self.cooldown = constants.cannon_cooldown_ticks;
         Event {
             // Note: want to shoot on the tick we had information on
             tick: self.tick,
