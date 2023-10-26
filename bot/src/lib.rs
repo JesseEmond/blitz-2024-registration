@@ -89,6 +89,21 @@ impl MeteorMiss {
     }
 }
 
+#[pyclass(extends=EventBase, subclass)]
+pub struct Shoot {
+    #[pyo3(get)]
+    pub id: String,
+    #[pyo3(get)]
+    pub position: (f64, f64),
+}
+
+#[pymethods]
+impl Shoot {
+    fn __repr__(&self) -> String {
+        format!("Shoot(id={}, pos={:?})", self.id, self.position)
+    }
+}
+
 impl IntoPy<PyObject> for PlanEvent {
     fn into_py(self, py: Python<'_>) -> PyObject {
         match self.0.info {
@@ -107,6 +122,16 @@ impl IntoPy<PyObject> for PlanEvent {
                     tick: self.0.tick,
                     event_type: "MeteorMiss".to_string()
                 }).add_subclass(MeteorMiss { id: id.to_string(), }))
+                .unwrap().into_py(py)
+            },
+            EventInfo::Shoot { id, pos } => {
+                Py::new(py, PyClassInitializer::from(EventBase {
+                    tick: self.0.tick,
+                    event_type: "Shoot".to_string()
+                }).add_subclass(Shoot {
+                    id: id.to_string(),
+                    position: (pos.x, pos.y),
+                }))
                 .unwrap().into_py(py)
             },
         }
