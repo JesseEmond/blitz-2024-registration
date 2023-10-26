@@ -37,19 +37,21 @@ impl Nostradamus {
         }
     }
 
-    pub fn plan(&mut self) -> Vec<PyEventWrapper> {
+    pub fn plan(&mut self) -> Vec<PlanEvent> {
         let planner = Planner {};
         let state = self.random.save_state();
-        let events = planner.plan(&self.game_first_tick.constants,
+        let first_id: u16 = self.game_first_tick.meteors[0].projectile.id
+            .parse().unwrap();
+        let events = planner.plan(&self.game_first_tick.constants, first_id,
                                   &mut self.random);
         self.random.restore_state(state);
-        events.iter().map(|&e| PyEventWrapper(e)).collect()
+        events.iter().map(|&e| PlanEvent(e)).collect()
     }
 }
 
-pub struct PyEventWrapper(Event);
+pub struct PlanEvent(Event);
 
-#[pyclass(subclass)]
+#[pyclass(name="Event", subclass)]
 pub struct EventBase {
     #[pyo3(get)]
     pub tick: u16,
@@ -77,7 +79,15 @@ impl MeteorSpawn {
     }
 }
 
-impl IntoPy<PyObject> for PyEventWrapper {
+#[pymethods]
+impl MeteorSpawn {
+    fn __repr__(&self) -> String {
+        format!("MeteorSpawn(id={}, pos={:?}, vel={:?})",
+            self.id, self.position, self.velocity)
+    }
+}
+
+impl IntoPy<PyObject> for PlanEvent {
     fn into_py(self, py: Python<'_>) -> PyObject {
         let (subclass, baseclass) = match self.0.info {
             EventInfo::MeteorSpawn { id, pos, vel } => MeteorSpawn::new(self.0.tick, id, pos, vel),
@@ -91,5 +101,6 @@ impl IntoPy<PyObject> for PyEventWrapper {
 #[pymodule]
 fn nostradamus(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Nostradamus>()?;
+    m.add_class::<EventBase>()?;
     Ok(())
 }
