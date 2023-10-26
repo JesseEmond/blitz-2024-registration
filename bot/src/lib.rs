@@ -5,8 +5,10 @@ extern crate serde_json;
 
 mod game_message;
 mod game_random;
+mod physics;
 mod planner;
 mod seedrandom;
+mod simulate;
 mod spawn_schedule;
 mod vec2;
 
@@ -15,7 +17,8 @@ use pyo3::exceptions::PyValueError;
 
 use crate::game_message::GameMessage;
 use crate::game_random::GameRandom;
-use crate::planner::{Event, EventInfo, Planner};
+use crate::planner::Planner;
+use crate::simulate::{Event, EventInfo};
 
 #[pyclass]
 pub struct Nostradamus {
@@ -96,12 +99,15 @@ pub struct Shoot {
     pub id: String,
     #[pyo3(get)]
     pub position: (f64, f64),
+    #[pyo3(get)]
+    pub target_id: String,
 }
 
 #[pymethods]
 impl Shoot {
     fn __repr__(&self) -> String {
-        format!("Shoot(id={}, pos={:?})", self.id, self.position)
+        format!("Shoot(id={}, pos={:?}, target={:?})", self.id, self.position,
+                self.target_id)
     }
 }
 
@@ -125,13 +131,14 @@ impl IntoPy<PyObject> for PlanEvent {
                 }).add_subclass(MeteorMiss { id: id.to_string(), }))
                 .unwrap().into_py(py)
             },
-            EventInfo::Shoot { id, pos } => {
+            EventInfo::Shoot { id, pos, target_id } => {
                 Py::new(py, PyClassInitializer::from(EventBase {
                     tick: self.0.tick,
                     event_type: "Shoot".to_string()
                 }).add_subclass(Shoot {
                     id: id.to_string(),
                     position: (pos.x, pos.y),
+                    target_id: target_id.to_string(),
                 }))
                 .unwrap().into_py(py)
             },

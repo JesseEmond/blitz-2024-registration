@@ -161,7 +161,8 @@ mod tests {
         let mut random = GameRandom::infer_from_seeds(&game, &[FIXED_SEED])
             .unwrap();
         // Check that the first spawn gives the same meteor, again.
-        let spawn = random.next_spawn(&game.constants);
+        let mut spawn = random.next_spawn(&game.constants);
+        spawn.pos = spawn.pos.add(&spawn.vel);
         let pos: Vec2 = game.meteors[0].projectile.position.into();
         let vel: Vec2 = game.meteors[0].projectile.velocity.into();
         assert!(spawn.pos.within_range(&pos, FLOAT_EQ_EPS),

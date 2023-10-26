@@ -22,6 +22,10 @@ impl Vec2 {
     pub fn minus(&self, other: &Self) -> Self {
         Self { x: self.x - other.x, y: self.y - other.y }
     }
+
+    pub fn dot(&self, other: &Self) -> f64 {
+        self.x * other.x + self.y * other.y
+    }
     
     pub fn len_sq(&self) -> f64 {
         self.x * self.x + self.y * self.y
