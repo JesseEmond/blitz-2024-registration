@@ -74,7 +74,6 @@ impl GameRandom {
         let large_meteor_speed = large_meteor_info.approximate_speed;
         let multiplier = self.pool.next_random() * 0.4 + 0.8;  // +- 20%
         vel = vel.normalized().scale(large_meteor_speed * multiplier);
-        pos = pos.add(&vel);  // update is called right after spawn
         MeteorSpawn { pos: pos, vel: vel }
     }
 
@@ -108,7 +107,9 @@ impl GameRandom {
         for seed in seeds {
             let mut game_rand = Self::new(SeedRandom::from_seed(seed));
             let start_state = game_rand.save_state();
-            let spawn = game_rand.next_spawn(&game.constants);
+            let mut spawn = game_rand.next_spawn(&game.constants);
+            // Update is called after spawn before we get the tick info.
+            spawn.pos = spawn.pos.add(&spawn.vel);
             if spawn.pos.within_range(&pos, FLOAT_EQ_EPS) &&
                spawn.vel.within_range(&vel, FLOAT_EQ_EPS) {
                 game_rand.restore_state(start_state);
