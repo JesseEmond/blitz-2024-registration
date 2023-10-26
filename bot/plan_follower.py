@@ -29,6 +29,15 @@ class PlanFollower(game_events.Listener):
             len(self.plan))
         return self.plan[:next_tick_idx]
 
+    def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
+        self.asserter.expect(
+            self.plan and self.plan[0].event_type == 'MeteorMiss',
+            f'Unexpected miss of: {meteor_id}')
+        event = self.plan.pop(0)
+        self.asserter.expect(event.id == meteor_id,
+            'Miss meteor ID was not predicted correctly. '
+            f'Predicted {event.id} Got {meteor_id}')
+
     def on_meteor_spawn(self, events: game_events.GameEvents,
                         meteor_id: str) -> None:
         self.asserter.expect(
