@@ -53,7 +53,11 @@ pub struct GameRandom {
     pool: RandomPool,
 }
 
-const OBSERVED_SEEDS: &[&[u8]] = &[b"Stardreamer"];
+// Collected from playing games on the server. The number of maps is a
+// relatively small set.
+const OBSERVED_SEEDS: &[&[u8]] = &[
+    b"Stardreamer", b"Nova_Explorer", b"Celestial_Voyager",
+    b"Galactic_Guardian", b"Solar_Serenity"];
 // Found from decompiling the embedded V8 bytecode of the local challenge binary.
 const METEOR_GENERATION_CONE_ANGLE: f64 = 30f64;
 const FLOAT_EQ_EPS: f64 = 1e-8;
