@@ -126,6 +126,26 @@ impl Shoot {
     }
 }
 
+#[pyclass(extends=EventBase, subclass)]
+pub struct Split {
+    #[pyo3(get)]
+    pub id: String,
+    #[pyo3(get)]
+    pub parent_id: String,
+    #[pyo3(get)]
+    pub position: (f64, f64),
+    #[pyo3(get)]
+    pub velocity: (f64, f64),
+}
+
+#[pymethods]
+impl Split {
+    fn __repr__(&self) -> String {
+        format!("Split(id={}, parent={}, pos={:?}, vel={:?})",
+            self.id, self.parent_id, self.position, self.velocity)
+    }
+}
+
 impl IntoPy<PyObject> for PlanEvent {
     fn into_py(self, py: Python<'_>) -> PyObject {
         match self.0.info {
@@ -166,6 +186,17 @@ impl IntoPy<PyObject> for PlanEvent {
                     target_id: target_id.to_string(),
                 }))
                 .unwrap().into_py(py)
+            },
+            EventInfo::MeteorSplit { id, parent_id, pos, vel } => {
+                Py::new(py, PyClassInitializer::from(EventBase {
+                    tick: self.0.tick,
+                    event_type: "Split".to_string()
+                }).add_subclass(Split {
+                    id: id.to_string(),
+                    parent_id: parent_id.to_string(),
+                    position: (pos.x, pos.y),
+                    velocity: (vel.x, vel.y)
+                })).unwrap().into_py(py)
             },
         }
     }

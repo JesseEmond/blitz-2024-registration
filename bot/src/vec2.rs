@@ -48,6 +48,12 @@ impl Vec2 {
         Self::new(self.x * s, self.y * s)
     }
 
+    pub fn rotate(&self, beta: f64) -> Self {
+        let cos = beta.cos();
+        let sin = beta.sin();
+        Self::new(self.x * cos - self.y * sin, self.x * sin + self.y * cos)
+    }
+
     pub fn distance_sq(&self, other: &Self) -> f64 {
         self.minus(other).len_sq()
     }

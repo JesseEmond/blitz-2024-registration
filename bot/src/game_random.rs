@@ -9,6 +9,12 @@ pub struct MeteorSpawn {
     pub vel: Vec2,
 }
 
+pub struct MeteorSplit {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub typ: MeteorType,
+}
+
 struct RandomPool {
     rng: SeedRandom,
     // Pool of generated random numbers. Used to go forward/backward in history.
@@ -69,15 +75,35 @@ impl GameRandom {
         let degrees = 180f64 - METEOR_GENERATION_CONE_ANGLE / 2f64
               + self.pool.next_random() * METEOR_GENERATION_CONE_ANGLE;
         let mut vel = Vec2::from_polar(r, degrees.to_radians());
-        // The following is done as part of Meteor Build
         let large_meteor_info = &constants.meteor_infos[&MeteorType::Large];
-        let large_meteor_speed = large_meteor_info.approximate_speed;
-        let multiplier = self.pool.next_random() * 0.4 + 0.8;  // +- 20%
-        vel = vel.normalized().scale(large_meteor_speed * multiplier);
-        MeteorSpawn { pos: pos, vel: vel }
+        let speed = large_meteor_info.approximate_speed * self.next_speed_multiplier();
+        vel = vel.normalized().scale(speed);
+        MeteorSpawn { pos, vel }
     }
 
-    // TODO: add next_splits
+    pub fn next_splits(&mut self, hit_pos: &Vec2, parent_vel: &Vec2,
+                       parent_type: MeteorType, constants: &Constants) -> Vec<MeteorSplit> {
+        let mut splits = Vec::new();
+        for explosion in &constants.meteor_infos[&parent_type].explodes_into {
+            let child_info = &constants.meteor_infos[&explosion.meteor_type];
+            let radians = explosion.approximate_angle.to_radians();
+            let child_dir = parent_vel.rotate(radians).normalized();
+            let child_speed = child_info.approximate_speed * self.next_speed_multiplier();
+            let child_vel = child_dir.scale(child_speed);
+            splits.push(MeteorSplit {
+                pos: *hit_pos,
+                vel: child_vel,
+                typ: explosion.meteor_type,
+            });
+        }
+        splits
+    }
+
+    /// Next speed multiplier to apply to a new meteor's speed.
+    pub fn next_speed_multiplier(&mut self) -> f64 {
+        // The following is done as part of Meteor Build
+        self.pool.next_random() * 0.4 + 0.8  // +- 20%
+    }
 
     /// Save the state of the randomness, to 'restore_state' later.
     pub fn save_state(&self) -> usize {

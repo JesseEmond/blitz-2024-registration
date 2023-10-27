@@ -50,7 +50,7 @@ pub fn collision_times(x: &MovingCircle, y: &MovingCircle) -> Option<(f64, f64)>
 
 pub fn make_intersection(x: &MovingCircle, y: &MovingCircle, t: f64) -> Intersection {
     let a = x.pos.add(&x.vel.scale(t));
-    let b = y.pos.add(&x.vel.scale(t));
+    let b = y.pos.add(&y.vel.scale(t));
     let intersection = b.minus(&a).normalized().scale(x.size).add(&a);
     Intersection { t, intersection }
 }
