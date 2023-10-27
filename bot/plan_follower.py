@@ -88,22 +88,25 @@ class PlanFollower(game_events.Listener):
         self.asserter.expect(hit_event,
             f'Missing hit of {meteor_id} by {rocket_id}, Plan: {self.print_plan()}')
         event = self.plan.remove(hit_event)
-        self.asserter.expect(
-            hit_event.rocket_id == rocket_id and hit_event.meteor_id == meteor_id,
+        right_rocket = (hit_event.rocket_id == rocket_id or
+                        rocket_id == game_events.INSTANT_KILL_ROCKET_ID)
+        self.asserter.expect(right_rocket,
             f'Predicted rocket {hit_event.rocket_id} hit on {hit_event.meteor_id}, got '
             f'{rocket_id} hit on {meteor_id}')
-        # TODO: TEMPORARY, restore this once we stop shooting at targets we won't hit
-        # self.asserter.expect(
-        #     self.rocket_targets[rocket_id] == meteor_id,
-        #     f'Rocket {rocket_id} did not hit the intended '
-        #     f'{self.rocket_targets[rocket_id]}, instead it hit {meteor_id}')
+        # Now we know we can trust the hit_event.rocket_id. Use it, in case this
+        # was an instant kill (so our game_events doesn't know the true rocket
+        # id)
+        rocket_id = hit_event.rocket_id
+        self.asserter.expect(
+            self.rocket_targets[rocket_id] == meteor_id,
+            f'Rocket {rocket_id} did not hit the intended '
+            f'{self.rocket_targets[rocket_id]}, instead it hit {meteor_id}')
 
     def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
-        pass # TODO: TEMPORARY, restore this once we stop shooting at targets we won't hit
-        # self.asserter.expect(False,
-        #     f'Rocket {rocket_id} wiffed! '
-        #     f'Target was: {self.rocket_targets.get(rocket_id)} '
-        #     f'Plan: {self.print_plan()}')
+        self.asserter.expect(False,
+            f'Rocket {rocket_id} wiffed! '
+            f'Target was: {self.rocket_targets.get(rocket_id)} '
+            f'Plan: {self.print_plan()}')
 
     def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
         miss_event = next(
@@ -116,12 +119,11 @@ class PlanFollower(game_events.Listener):
         self.asserter.expect(miss_event.id == meteor_id,
             'Miss meteor ID was not predicted correctly. '
             f'Predicted {miss_event.id} Got {meteor_id}')
-        # TODO: TEMPORARY, restore this once we stop shooting at targets we won't hit
-        # targeted = next(
-        #     (r for r, m in self.rocket_targets.items() if m == meteor_id),
-        #     None)
-        # self.asserter.expect(targeted is None,
-        #     f'Meteor {meteor_id} should have been hit by {targeted}')
+        targeted = next(
+            (r for r, m in self.rocket_targets.items() if m == meteor_id),
+            None)
+        self.asserter.expect(targeted is None,
+            f'Meteor {meteor_id} should have been hit by {targeted}')
 
     def on_meteor_spawn(self, events: game_events.GameEvents,
                         meteor_id: str) -> None:

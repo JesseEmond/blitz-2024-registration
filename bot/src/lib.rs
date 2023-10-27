@@ -40,7 +40,7 @@ impl Nostradamus {
     }
 
     pub fn plan(&mut self) -> Vec<PlanEvent> {
-        let planner = Planner {};
+        let mut planner = Planner::new();
         let state = self.random.save_state();
         let first_id: u32 = self.game_first_tick.meteors[0].projectile.id
             .parse().unwrap();

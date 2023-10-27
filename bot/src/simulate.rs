@@ -18,7 +18,7 @@ pub struct GameState {
     pub tick: u16,
     next_id: u32,
     pub meteors: Vec<Meteor>,
-    rockets: Vec<Rocket>,
+    pub rockets: Vec<Rocket>,
     cooldown: u8,
 }
 
@@ -31,10 +31,11 @@ pub struct Meteor {
     destroyed: bool,
 }
 
-struct Rocket {
-    id: u32,
-    pos: Vec2,
-    vel: Vec2,
+#[derive(Clone)]
+pub struct Rocket {
+    pub id: u32,
+    pub pos: Vec2,
+    pub vel: Vec2,
     destroyed: bool,
 }
 
@@ -222,6 +223,16 @@ impl GameState {
 
     pub fn is_done(&self) -> bool {
         self.tick == MAX_TICKS
+    }
+
+    pub fn snapshot(&self) -> Self {
+        Self {
+            tick: self.tick,
+            next_id: self.next_id,
+            meteors: self.meteors.clone(),
+            rockets: self.rockets.clone(),
+            cooldown: self.cooldown,
+        }
     }
 
     fn get_next_id(&mut self) -> u32 {
