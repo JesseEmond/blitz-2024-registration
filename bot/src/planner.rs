@@ -65,6 +65,7 @@ impl Planner {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
         while !state.is_done() {
+            println!("Tick {}, potential score: {}", state.tick, state.potential_score(constants));
             events.extend(
                 state.run_tick(random, constants).into_iter()
                     .map(|e| Event {

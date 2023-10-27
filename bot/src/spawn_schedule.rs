@@ -16,6 +16,11 @@ fn get_current_generation_ticks_delay(tick: u16) -> u16 {
     delay.round() as u16
 }
 
+/// Counts the number of remaining spawns, including 'tick'.
+pub fn remaining_spawns(tick: u16) -> usize {
+    (tick..MAX_TICKS).filter(|&t| is_spawn_tick(t)).count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,5 +38,11 @@ mod tests {
         let spawns: Vec<u16> = (0u16..MAX_TICKS)
             .filter(|&t| is_spawn_tick(t)).collect();
         assert_eq!(spawns, seen_spawns);
+    }
+
+    #[test]
+    fn test_remaining_spawns() {
+        assert_eq!(remaining_spawns(0), 25);
+        assert_eq!(remaining_spawns(1), 24);
     }
 }

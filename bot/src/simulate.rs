@@ -2,7 +2,7 @@
 use crate::game_message::{Cannon, Constants, MeteorType, MAX_TICKS};
 use crate::game_random::GameRandom;
 use crate::physics::{collision_times, make_intersection, MovingCircle};
-use crate::spawn_schedule::is_spawn_tick;
+use crate::spawn_schedule::{is_spawn_tick, remaining_spawns};
 use crate::vec2::Vec2;
 
 #[derive(Clone, Copy, Debug)]
@@ -238,6 +238,14 @@ impl GameState {
         id
     }
 
+    pub fn potential_score(&self, constants: &Constants) -> u16 {
+        let board_score: u16 = self.meteors.iter()
+            .map(|m| total_score(m.typ, constants)).sum();
+        let large_score = total_score(MeteorType::Large, constants);
+        let potential_score = large_score * remaining_spawns(self.tick) as u16;
+        self.score + board_score + potential_score
+    }
+
     pub fn print(&self) -> String {
         let mut out = String::new();
         for m in self.meteors.iter() {
@@ -271,4 +279,14 @@ pub fn max_rocket_x(constants: &Constants) -> f64 {
     // Note: interestingly, the server does width + size*2 to check for out of
     // bounds (found via reversing the local challenge binary). Replicate.
     (constants.world.width as f64) + constants.rockets.size * 2.0
+}
+
+pub fn total_score(meteor_type: MeteorType, constants: &Constants) -> u16 {
+    let mut score = 0;
+    let info = &constants.meteor_infos[&meteor_type];
+    score += info.score as u16;
+    for explosion in &info.explodes_into {
+        score += total_score(explosion.meteor_type, constants);
+    }
+    score
 }
