@@ -43,6 +43,11 @@ impl MeteorVision {
     }
 }
 
+pub struct Plan {
+    pub events: Vec<Event>,
+    pub score: u16,
+}
+
 pub struct Planner {
     targeted: HashSet<u32>,
     // IDs of future targets, must be incremented whenever we shoot.
@@ -56,7 +61,7 @@ impl Planner {
 
     pub fn plan(
         &mut self, cannon: &Cannon, constants: &Constants, first_id: u32,
-        random: &mut GameRandom) -> Vec<Event> {
+        random: &mut GameRandom) -> Plan {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
         while !state.is_done() {
@@ -87,7 +92,7 @@ impl Planner {
                 self.update_future_ids(rocket_id, &mut events);
             }
         }
-        events
+        Plan { events, score: state.score }
     }
 
     /// When shooting future spawns, we're predicting IDs. After shooting,
@@ -140,7 +145,7 @@ fn post_update_event_info(info: EventInfo) -> EventInfo {
 fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
               aim: &Vec2, target: &MeteorVision, constants: &Constants) -> bool {
     let rng_state = rng.save_state();
-    let mut state = state.snapshot();
+    let mut state = state.clone();
     let Some(shoot_event) = state.shoot(cannon, constants, aim, target.meteor.id) else {
         rng.restore_state(rng_state);
         return false;
@@ -244,7 +249,7 @@ fn upcoming_spawns(
     state: &GameState, random: &mut GameRandom, cannon: &Cannon,
     constants: &Constants) -> Vec<MeteorVision> {
     let rng_state = random.save_state();
-    let mut state = state.snapshot();
+    let mut state = state.clone();
     let mut spawns = Vec::new();
     for _ in 0..max_rocket_lifespan(constants, cannon) {
         if state.is_done() {

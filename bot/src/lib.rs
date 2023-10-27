@@ -44,11 +44,12 @@ impl Nostradamus {
         let state = self.random.save_state();
         let first_id: u32 = self.game_first_tick.meteors[0].projectile.id
             .parse().unwrap();
-        let events = planner.plan(
+        let plan = planner.plan(
             &self.game_first_tick.cannon, &self.game_first_tick.constants, first_id,
             &mut self.random);
+        println!("Final score: {}", plan.score);
         self.random.restore_state(state);
-        events.iter().map(|&e| PlanEvent(e)).collect()
+        plan.events.iter().map(|&e| PlanEvent(e)).collect()
     }
 }
 

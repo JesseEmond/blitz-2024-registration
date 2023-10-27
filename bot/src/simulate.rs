@@ -14,12 +14,14 @@ pub enum EventInfo {
     MeteorSplit { id: u32, parent_id: u32, pos: Vec2, vel: Vec2, typ: MeteorType },
 }
 
+#[derive(Clone)]
 pub struct GameState {
     pub tick: u16,
     next_id: u32,
     pub meteors: Vec<Meteor>,
     pub rockets: Vec<Rocket>,
     cooldown: u8,
+    pub score: u16,
 }
 
 #[derive(Clone)]
@@ -67,6 +69,7 @@ impl GameState {
             meteors: Vec::new(),
             rockets: Vec::new(),
             cooldown: 0,
+            score: 0,
         }
     }
 
@@ -135,6 +138,7 @@ impl GameState {
         rocket.destroyed = true;
         self.meteors[collision.meteor_idx].destroyed = true;
         let parent = self.meteors[collision.meteor_idx].clone();
+        self.score += constants.meteor_infos[&parent.typ].score as u16;
         let intersection = make_intersection(
             &MovingCircle {
                 pos: rocket.pos,
@@ -226,16 +230,6 @@ impl GameState {
 
     pub fn is_done(&self) -> bool {
         self.tick == MAX_TICKS
-    }
-
-    pub fn snapshot(&self) -> Self {
-        Self {
-            tick: self.tick,
-            next_id: self.next_id,
-            meteors: self.meteors.clone(),
-            rockets: self.rockets.clone(),
-            cooldown: self.cooldown,
-        }
     }
 
     fn get_next_id(&mut self) -> u32 {
