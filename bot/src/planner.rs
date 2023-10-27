@@ -74,27 +74,43 @@ impl Planner {
             if let Some(target) = pick_target(&state, random, &self.targeted,
                                               constants, cannon) {
                 self.targeted.insert(target.meteor_id);
-                let mut target_id = target.meteor_id;
                 if !target.is_spawned {
                     self.future_ids.push(target.meteor_id);
-                    target_id += 1;
                 }
                 let shoot_info = state.shoot(cannon, constants,
-                    &target.aim, target_id).unwrap();
+                    &target.aim, target.meteor_id).unwrap();
+                events.push(Event { info: shoot_info, tick: state.tick });
                 let rocket_id = match shoot_info {
                     EventInfo::Shoot { id, .. } => id,
                     _ => panic!("Shoot returned non-shoot event: {:?}", shoot_info),
                 };
-                self.future_ids.retain(|&id| id >= rocket_id);
-                for id in self.future_ids.iter() { self.targeted.remove(id); }
-                for id in self.future_ids.iter_mut() {
-                    *id += 1;
-                    self.targeted.insert(*id);
-                }
-                events.push(Event { info: shoot_info, tick: state.tick });
+                self.update_future_ids(rocket_id, &mut events);
             }
         }
         events
+    }
+
+    /// When shooting future spawns, we're predicting IDs. After shooting,
+    /// future IDs need to be incremented and updated in internal structures:
+    /// - in 'targeted' ids
+    /// - in previous recorded 'Shoot' events
+    fn update_future_ids(&mut self, shot_id: u32, events: &mut Vec<Event>) {
+        // IDs that are no longer in the 'future' can be forgotten about.
+        self.future_ids.retain(|&id| id >= shot_id);
+        // Previous 'Shoot' events that referred to a future ID must be updated.
+        for event in events.iter_mut() {
+            if let EventInfo::Shoot { ref mut target_id, .. } = event.info {
+                if self.future_ids.contains(&target_id) {
+                    *target_id += 1;
+                }
+            }
+        }
+        // 'targeted' IDs and 'future_ids' must be incremented.
+        for id in self.future_ids.iter() { self.targeted.remove(id); }
+        for id in self.future_ids.iter_mut() {
+            *id += 1;
+            self.targeted.insert(*id);
+        }
     }
 }
 
@@ -123,7 +139,6 @@ fn post_update_event_info(info: EventInfo) -> EventInfo {
 /// Verify that a given hit will indeed hit the target.
 fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
               aim: &Vec2, target: &MeteorVision, constants: &Constants) -> bool {
-    // TODO: take into account that target might spawn later
     let rng_state = rng.save_state();
     let mut state = state.snapshot();
     let Some(shoot_event) = state.shoot(cannon, constants, aim, target.meteor.id) else {
@@ -134,15 +149,23 @@ fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
         EventInfo::Shoot { id, .. } => id,
         _ => panic!("Shoot returned a non-shoot event"),
     };
+    let target_id = if target.is_spawned() {
+        target.meteor.id
+    } else {
+        // The rocket we shot consumed an ID, the ID we're looking for will be
+        // generated +1.
+        target.meteor.id + 1
+    };
     let cannon_pos: Vec2 = cannon.position.into();
     let rocket_dir = (aim.minus(&cannon_pos)).normalized();
+    let rocket_vel = rocket_dir.scale(constants.rockets.speed);
     let rocket_circle = MovingCircle {
         pos: cannon_pos,
-        vel: rocket_dir.scale(constants.rockets.speed),
+        vel: rocket_vel,
         size: constants.rockets.size,
     };
     let meteor_circle = MovingCircle {
-        pos: target.meteor.pos,
+        pos: rewind_pos_for_physics(target, state.tick),
         vel: target.meteor.vel,
         size: constants.meteor_infos[&target.meteor.typ].size,
     };
@@ -152,7 +175,7 @@ fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
     };
     let max_t = t1.max(t2);
     assert!(max_t >= 0.0);
-    for _ in 0..(max_t.ceil() as usize) {
+    for _ in 0..(max_t.ceil() as u16) {
         if state.is_done() {
             rng.restore_state(rng_state);
             return false;
@@ -160,19 +183,19 @@ fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
         for event in state.run_tick(rng, constants) {
             match event {
                 EventInfo::Hit { meteor, rocket } => {
-                    if rocket == rocket_id && meteor == target.meteor.id {
+                    if rocket == rocket_id && meteor == target_id {
                         rng.restore_state(rng_state);
                         return true;
-                    } else if rocket == rocket_id && meteor != target.meteor.id {
+                    } else if rocket == rocket_id && meteor != target_id {
                         // Our rocket hit something else
                         rng.restore_state(rng_state);
                         return false;
                     }
-                    assert!(meteor != target.meteor.id,
+                    assert!(meteor != target_id,
                             "Our target meteor got hit. Why did we aim for it?");
                 },
                 EventInfo::MeteorMiss { id } => {
-                    if id == target.meteor.id {
+                    if id == target_id {
                         rng.restore_state(rng_state);
                         return false;
                     }
@@ -182,7 +205,7 @@ fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
         }
     }
     panic!("Expected rocket {} to hit {}, but no hit found. Bad aim? State:\n{}",
-           rocket_id, target.meteor.id, state.print());
+           rocket_id, target_id, state.print());
 }
 
 fn pick_target(state: &GameState, random: &mut GameRandom,
@@ -190,15 +213,13 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
                cannon: &Cannon) -> Option<Target> {
     let existing: Vec<MeteorVision> = state.meteors.iter().cloned()
         .map(|m| MeteorVision::past(m)).collect();
-    let upcoming = upcoming_spawns_post_shot(state, random, cannon, constants);
+    let upcoming = upcoming_spawns(state, random, cannon, constants);
     for meteor_vision in existing.iter().chain(upcoming.iter()) {
         if avoid.contains(&meteor_vision.meteor.id) {
             continue;  // Already targetting it!
         }
-        // TODO: allow targetting future spawns (and aim & verify them correctly)
-        if !meteor_vision.is_spawned() { continue; }
         let target = MovingCircle {
-            pos: meteor_vision.meteor.pos,
+            pos: rewind_pos_for_physics(meteor_vision, state.tick),
             vel: meteor_vision.meteor.vel,
             size: constants.meteor_infos.get(&meteor_vision.meteor.typ).unwrap().size,
         };
@@ -219,7 +240,7 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
 /// Finds meteors that will spawn (spawns or splits) in the near future (in the
 /// max time that a rocket can travel).
 /// Note that future Meteor IDs returned need to be incremented anytime we shoot.
-fn upcoming_spawns_post_shot(
+fn upcoming_spawns(
     state: &GameState, random: &mut GameRandom, cannon: &Cannon,
     constants: &Constants) -> Vec<MeteorVision> {
     let rng_state = random.save_state();
@@ -254,4 +275,27 @@ fn max_rocket_lifespan(constants: &Constants, cannon: &Cannon) -> u32 {
     let top_right = Vec2::new(max_rocket_x(constants), 0.0);
     let max_range = top_right.distance(&cannon.position.into());
     max_range.ceil() as u32
+}
+
+/// For unspawned meteors, move them back by 'delta_t' so that by the time that
+/// their spawn tick happens they will be on their 'pos'.
+fn rewind_pos_for_physics(vision: &MeteorVision, current_tick: u16) -> Vec2 {
+    let delta_t = spawn_delta_t(vision, current_tick);
+    if delta_t > 0 {
+        // Rewind the meteor by '-delta_t', so that at t=spawn_tick the
+        // meteor will be on meteor_vision.
+        vision.meteor.pos.minus(&vision.meteor.vel.scale(delta_t as f64))
+    } else {
+        vision.meteor.pos
+    }
+}
+
+fn spawn_delta_t(vision: &MeteorVision, current_tick: u16) -> u16 {
+    if let Some(spawn_tick) = vision.tick {
+        assert!(spawn_tick >= current_tick, "Spawn: {}, Current tick: {}",
+                spawn_tick, current_tick);
+        spawn_tick - current_tick
+    } else {
+        0
+    }
 }

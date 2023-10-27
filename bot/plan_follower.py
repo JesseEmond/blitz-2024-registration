@@ -193,8 +193,13 @@ class PlanFollower(game_events.Listener):
 
     def on_before_events(self, events: game_events.GameEvents,
                          game: GameMessage, changes: game_events.Changes) -> None:
-        if not self.plan:
-            return
+        all_rocket_ids = {r.id for r in game.rockets}
+        all_meteor_ids = {m.id for m in game.meteors}
+        for rocket_id, meteor_id in self.rocket_targets.items():
+            self.asserter.expect(rocket_id not in all_meteor_ids,
+                f'Predicted rocket id {rocket_id}, but this was a meteor!')
+            self.asserter.expect(meteor_id not in all_rocket_ids,
+                f'Predicted meteor id {meteor_id}, but this was a rocket!')
         skipped = [e for e in self.plan if e.tick < game.tick]
         self.asserter.expect(not skipped,
             f'Plan has skipped event(s): {skipped}')
@@ -204,8 +209,6 @@ class PlanFollower(game_events.Listener):
         self.asserter.expect(
             self.just_shot_id is None,
             f'Just shot {self.just_shot_id}, but no rocket detected.')
-        if not self.plan:
-            return
         tick_events = [event for event in self.tick_events(game.tick)
                        if event.event_type != 'Shoot']
         self.asserter.expect(not tick_events,
