@@ -17,7 +17,7 @@ impl Planner {
             events.extend(state.run_tick(random, constants));
             
             // TODO: smarter target picking
-            if state.can_shoot() && !state.meteors.is_empty() {
+            if state.cannon_ready() && !state.meteors.is_empty() {
                 let meteor = state.meteors.iter().next().unwrap();
                 let target = MovingCircle {
                     pos: meteor.pos,
@@ -29,7 +29,9 @@ impl Planner {
                     &cannon_pos,
                     constants.rockets.speed,
                     &target) {
-                    events.push(state.shoot(cannon, constants, &aim, meteor.id));
+                    if let Some(event) = state.shoot(cannon, constants, &aim, meteor.id) {
+                        events.push(event);
+                    }
                 }
             }
         }

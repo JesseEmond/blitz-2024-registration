@@ -117,6 +117,10 @@ impl GameState {
     fn handle_collision(&mut self, collision: &Collision, rng: &mut GameRandom,
                         constants: &Constants) -> Vec<Event> {
         let mut events = Vec::new();
+        if self.rockets[collision.rocket_idx].destroyed ||
+            self.meteors[collision.meteor_idx].destroyed {
+            return events;
+        }
         events.push(Event {
             tick: self.tick + 1,
             info: EventInfo::Hit {
@@ -201,18 +205,21 @@ impl GameState {
     }
 
     pub fn shoot(&mut self, cannon: &Cannon, constants: &Constants,
-                 target: &Vec2, target_id: u32) -> Event {
-        assert!(self.can_shoot());
+                 target: &Vec2, target_id: u32) -> Option<Event> {
+        assert!(self.cannon_ready());
+        if target.x < cannon.position.x {
+            return None;
+        }
         let id = self.get_next_id();
         let pos = Vec2::new(cannon.position.x, cannon.position.y);
         let vel = target.minus(&pos).normalized().scale(constants.rockets.speed);
         self.rockets.push(Rocket { id, pos, vel, destroyed: false });
         self.cooldown = constants.cannon_cooldown_ticks;
-        Event {
+        Some(Event {
             // Note: want to shoot on the tick we had information on
             tick: self.tick,
             info: EventInfo::Shoot { id, pos: *target, target_id },
-        }
+        })
     }
 
     fn spawn_meteor(&mut self, rng: &mut GameRandom, constants: &Constants) -> Event {
@@ -237,7 +244,7 @@ impl GameState {
         }
     }
 
-    pub fn can_shoot(&self) -> bool {
+    pub fn cannon_ready(&self) -> bool {
         self.cooldown == 0
     }
 
