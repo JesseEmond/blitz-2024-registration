@@ -5,13 +5,6 @@ use crate::physics::{collision_times, make_intersection, MovingCircle};
 use crate::spawn_schedule::is_spawn_tick;
 use crate::vec2::Vec2;
 
-
-#[derive(Clone, Copy)]
-pub struct Event {
-    pub tick: u16,
-    pub info: EventInfo
-}
-
 #[derive(Clone, Copy)]
 pub enum EventInfo {
     MeteorSpawn { id: u32, pos: Vec2, vel: Vec2 },
@@ -22,7 +15,7 @@ pub enum EventInfo {
 }
 
 pub struct GameState {
-    tick: u16,
+    pub tick: u16,
     next_id: u32,
     pub meteors: Vec<Meteor>,
     rockets: Vec<Rocket>,
@@ -64,7 +57,7 @@ impl GameState {
         }
     }
 
-    pub fn run_tick(&mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<Event> {
+    pub fn run_tick(&mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<EventInfo> {
         let mut events = Vec::new();
         if is_spawn_tick(self.tick) {
             events.push(self.spawn_meteor(rng, constants));
@@ -77,7 +70,7 @@ impl GameState {
         events
     }
 
-    fn find_and_handle_collisions(&mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<Event> {
+    fn find_and_handle_collisions(&mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<EventInfo> {
         let mut all_collisions: Vec<Collision> = (0usize..self.rockets.len())
             .flat_map(|rocket_idx| {
                 self.rocket_collisions(constants, rocket_idx)
@@ -115,18 +108,15 @@ impl GameState {
     }
 
     fn handle_collision(&mut self, collision: &Collision, rng: &mut GameRandom,
-                        constants: &Constants) -> Vec<Event> {
+                        constants: &Constants) -> Vec<EventInfo> {
         let mut events = Vec::new();
         if self.rockets[collision.rocket_idx].destroyed ||
             self.meteors[collision.meteor_idx].destroyed {
             return events;
         }
-        events.push(Event {
-            tick: self.tick + 1,
-            info: EventInfo::Hit {
-                rocket: self.rockets[collision.rocket_idx].id,
-                meteor: self.meteors[collision.meteor_idx].id,
-            },
+        events.push(EventInfo::Hit {
+            rocket: self.rockets[collision.rocket_idx].id,
+            meteor: self.meteors[collision.meteor_idx].id,
         });
         let rocket = &mut self.rockets[collision.rocket_idx];
         rocket.destroyed = true;
@@ -154,33 +144,24 @@ impl GameState {
                 typ: split.typ,
                 destroyed: false,
             });
-            events.push(Event {
-                tick: self.tick + 1,
-                info: EventInfo::MeteorSplit {
-                    id,
-                    parent_id: parent.id,
-                    // Note: serialize is after update, client sees updated pos
-                    pos: split.pos.add(&split.vel),
-                    vel: split.vel,
-                },
+            events.push(EventInfo::MeteorSplit {
+                id,
+                parent_id: parent.id,
+                pos: split.pos,
+                vel: split.vel,
             });
         }
         events
     }
 
-    fn update_meteors(&mut self, constants: &Constants) -> Vec<Event> {
+    fn update_meteors(&mut self, constants: &Constants) -> Vec<EventInfo> {
         let mut events = Vec::new();
-        let next_tick = self.tick + 1;
         self.meteors.retain_mut(|meteor| {
             meteor.pos = meteor.pos.add(&meteor.vel);
             let keep = meteor_in_bounds_x(&meteor.pos)
                 && meteor_in_bounds_y(constants, &meteor.pos);
             if !keep {
-                events.push(Event {
-                    // Note: miss will be noticed on the incremented tick
-                    tick: next_tick,
-                    info: EventInfo::MeteorMiss { id: meteor.id },
-                });
+                events.push(EventInfo::MeteorMiss { id: meteor.id });
             }
             keep
         });
@@ -205,7 +186,7 @@ impl GameState {
     }
 
     pub fn shoot(&mut self, cannon: &Cannon, constants: &Constants,
-                 target: &Vec2, target_id: u32) -> Option<Event> {
+                 target: &Vec2, target_id: u32) -> Option<EventInfo> {
         assert!(self.cannon_ready());
         if target.x < cannon.position.x {
             return None;
@@ -215,14 +196,10 @@ impl GameState {
         let vel = target.minus(&pos).normalized().scale(constants.rockets.speed);
         self.rockets.push(Rocket { id, pos, vel, destroyed: false });
         self.cooldown = constants.cannon_cooldown_ticks;
-        Some(Event {
-            // Note: want to shoot on the tick we had information on
-            tick: self.tick,
-            info: EventInfo::Shoot { id, pos: *target, target_id },
-        })
+        Some(EventInfo::Shoot { id, pos: *target, target_id })
     }
 
-    fn spawn_meteor(&mut self, rng: &mut GameRandom, constants: &Constants) -> Event {
+    fn spawn_meteor(&mut self, rng: &mut GameRandom, constants: &Constants) -> EventInfo {
         let spawn = rng.next_spawn(constants);
         let id = self.get_next_id();
         self.meteors.push(Meteor {
@@ -232,15 +209,10 @@ impl GameState {
             typ: MeteorType::Large,
             destroyed: false,
         });
-        Event {
-            // Note: serialize happens after tick increment, client sees tick+1
-            tick: self.tick + 1,
-            info: EventInfo::MeteorSpawn {
-                id,
-                // Note: serialize happens after update, client sees updated pos
-                pos: spawn.pos.add(&spawn.vel),
-                vel: spawn.vel,
-            },
+        EventInfo::MeteorSpawn {
+            id,
+            pos: spawn.pos,
+            vel: spawn.vel,
         }
     }
 

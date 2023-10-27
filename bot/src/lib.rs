@@ -17,8 +17,8 @@ use pyo3::exceptions::PyValueError;
 
 use crate::game_message::GameMessage;
 use crate::game_random::GameRandom;
-use crate::planner::Planner;
-use crate::simulate::{Event, EventInfo};
+use crate::planner::{Event, Planner};
+use crate::simulate::{EventInfo};
 
 #[pyclass]
 pub struct Nostradamus {
