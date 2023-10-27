@@ -58,6 +58,10 @@ impl Vec2 {
         self.minus(other).len_sq()
     }
 
+    pub fn distance(&self, other: &Self) -> f64 {
+        self.distance_sq(other).sqrt()
+    }
+
     pub fn within_range(&self, other: &Self, range: f64) -> bool {
         self.distance_sq(other) <= range * range
     }

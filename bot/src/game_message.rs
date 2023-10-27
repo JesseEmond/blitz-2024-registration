@@ -17,7 +17,7 @@ pub struct GameMessage {
     pub score: u32,
 }
 
-#[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Default, Copy, Clone)]
+#[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Default, Copy, Clone, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MeteorType {
     #[default]

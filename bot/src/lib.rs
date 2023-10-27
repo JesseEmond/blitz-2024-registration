@@ -149,7 +149,7 @@ impl Split {
 impl IntoPy<PyObject> for PlanEvent {
     fn into_py(self, py: Python<'_>) -> PyObject {
         match self.0.info {
-            EventInfo::MeteorSpawn { id, pos, vel } => {
+            EventInfo::MeteorSpawn { id, pos, vel, .. } => {
                 Py::new(py, PyClassInitializer::from(EventBase {
                     tick: self.0.tick,
                     event_type: "MeteorSpawn".to_string()
@@ -187,7 +187,7 @@ impl IntoPy<PyObject> for PlanEvent {
                 }))
                 .unwrap().into_py(py)
             },
-            EventInfo::MeteorSplit { id, parent_id, pos, vel } => {
+            EventInfo::MeteorSplit { id, parent_id, pos, vel, .. } => {
                 Py::new(py, PyClassInitializer::from(EventBase {
                     tick: self.0.tick,
                     event_type: "Split".to_string()

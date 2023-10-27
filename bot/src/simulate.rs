@@ -5,13 +5,13 @@ use crate::physics::{collision_times, make_intersection, MovingCircle};
 use crate::spawn_schedule::is_spawn_tick;
 use crate::vec2::Vec2;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum EventInfo {
-    MeteorSpawn { id: u32, pos: Vec2, vel: Vec2 },
+    MeteorSpawn { id: u32, pos: Vec2, vel: Vec2, typ: MeteorType },
     MeteorMiss { id: u32 },
     Hit { rocket: u32, meteor: u32 },
     Shoot { id: u32, pos: Vec2, target_id: u32 },
-    MeteorSplit { id: u32, parent_id: u32, pos: Vec2, vel: Vec2 },
+    MeteorSplit { id: u32, parent_id: u32, pos: Vec2, vel: Vec2, typ: MeteorType },
 }
 
 pub struct GameState {
@@ -31,12 +31,24 @@ pub struct Meteor {
     destroyed: bool,
 }
 
+impl Meteor {
+    pub fn new(id: u32, pos: Vec2, vel: Vec2, typ: MeteorType) -> Self {
+        Meteor { id, pos, vel, typ, destroyed: false }
+    }
+}
+
 #[derive(Clone)]
 pub struct Rocket {
     pub id: u32,
     pub pos: Vec2,
     pub vel: Vec2,
     destroyed: bool,
+}
+
+impl Rocket {
+    pub fn new(id: u32, pos: Vec2, vel: Vec2) -> Self {
+        Rocket { id, pos, vel, destroyed: false }
+    }
 }
 
 struct Collision {
@@ -138,18 +150,13 @@ impl GameState {
         let hit_pos = intersection.intersection;
         for split in rng.next_splits(&hit_pos, &parent.vel, parent.typ, constants) {
             let id = self.get_next_id();
-            self.meteors.push(Meteor {
-                id,
-                pos: split.pos,
-                vel: split.vel,
-                typ: split.typ,
-                destroyed: false,
-            });
+            self.meteors.push(Meteor::new(id, split.pos, split.vel, split.typ));
             events.push(EventInfo::MeteorSplit {
                 id,
                 parent_id: parent.id,
                 pos: split.pos,
                 vel: split.vel,
+                typ: split.typ,
             });
         }
         events
@@ -195,7 +202,7 @@ impl GameState {
         let id = self.get_next_id();
         let pos = Vec2::new(cannon.position.x, cannon.position.y);
         let vel = target.minus(&pos).normalized().scale(constants.rockets.speed);
-        self.rockets.push(Rocket { id, pos, vel, destroyed: false });
+        self.rockets.push(Rocket::new(id, pos, vel));
         self.cooldown = constants.cannon_cooldown_ticks;
         Some(EventInfo::Shoot { id, pos: *target, target_id })
     }
@@ -203,17 +210,13 @@ impl GameState {
     fn spawn_meteor(&mut self, rng: &mut GameRandom, constants: &Constants) -> EventInfo {
         let spawn = rng.next_spawn(constants);
         let id = self.get_next_id();
-        self.meteors.push(Meteor {
-            id,
-            pos: spawn.pos,
-            vel: spawn.vel,
-            typ: MeteorType::Large,
-            destroyed: false,
-        });
+        let typ = MeteorType::Large;
+        self.meteors.push(Meteor::new(id, spawn.pos, spawn.vel, typ));
         EventInfo::MeteorSpawn {
             id,
             pos: spawn.pos,
             vel: spawn.vel,
+            typ,
         }
     }
 
@@ -240,6 +243,20 @@ impl GameState {
         self.next_id += 1;
         id
     }
+
+    pub fn print(&self) -> String {
+        let mut out = String::new();
+        for m in self.meteors.iter() {
+            out.push_str(format!(
+                "M {}: pos={:?}, vel={:?} {:?}\n",
+                m.id, m.pos, m.vel, m.typ).as_str());
+        }
+        for r in self.rockets.iter() {
+            out.push_str(format!(
+                "R {}: pos={:?}, vel={:?}\n", r.id, r.pos, r.vel).as_str());
+        }
+        out
+    }
 }
 
 pub fn meteor_in_bounds_x(pos: &Vec2) -> bool {
@@ -253,7 +270,11 @@ pub fn meteor_in_bounds_y(constants: &Constants, pos: &Vec2) -> bool {
 }
 
 pub fn rocket_in_bounds_x(constants: &Constants, pos: &Vec2) -> bool {
+    pos.x < max_rocket_x(constants)
+}
+
+pub fn max_rocket_x(constants: &Constants) -> f64 {
     // Note: interestingly, the server does width + size*2 to check for out of
     // bounds (found via reversing the local challenge binary). Replicate.
-    pos.x < (constants.world.width as f64) + constants.rockets.size * 2.0
+    (constants.world.width as f64) + constants.rockets.size * 2.0
 }
