@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
-use crate::physics::{aim_ahead, collision_times, MovingCircle};
+use crate::physics::{aim_ahead, MovingCircle};
 use crate::simulate::{max_rocket_x, EventInfo, GameState, Meteor};
 use crate::vec2::Vec2;
 
@@ -20,6 +20,7 @@ struct Target {
     aim: Vec2,
     meteor_id: u32,
     is_spawned: bool,
+    potential_score: u16,
 }
 
 struct MeteorVision {
@@ -65,7 +66,6 @@ impl Planner {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
         while !state.is_done() {
-            println!("Tick {}, potential score: {}", state.tick, state.potential_score(constants));
             events.extend(
                 state.run_tick(random, constants).into_iter()
                     .map(|e| Event {
@@ -120,6 +120,99 @@ impl Planner {
     }
 }
 
+/// Helper structure to explore what will happen if we try & shoot a target.
+struct TentativeShot<'a> {
+    state: GameState,
+    aim: &'a Vec2,
+    target: &'a MeteorVision,
+    cannon: &'a Cannon,
+    constants: &'a Constants,
+}
+
+impl TentativeShot <'_> {
+    pub fn get_result(&mut self, min_sim_ticks: u16,
+                  rng: &mut GameRandom) -> Option<Target> {
+        let rng_state = rng.save_state();
+        let mut target = None;
+        if let Some((rocket_id, meteor_id)) = self.shoot() {
+            if self.look_for_hit(min_sim_ticks, rocket_id, meteor_id, rng) {
+                target = Some(Target {
+                    aim: *self.aim,
+                    // Note we use the original ID, not the post-simulation one.
+                    meteor_id: self.target.meteor.id,
+                    is_spawned: self.target.is_spawned(),
+                    potential_score: self.state.potential_score(self.constants),
+                });
+            }
+        }
+        rng.restore_state(rng_state);
+        target
+    }
+
+    /// Returns the (rocket_id, meteor_id) post-shot.
+    fn shoot(&mut self) -> Option<(u32, u32)> {
+        let shoot_event = self.state.shoot(
+            self.cannon, self.constants, self.aim, self.target.meteor.id)?;
+        let rocket_id = match shoot_event {
+            EventInfo::Shoot { id, .. } => id,
+            _ => panic!("Shoot returned a non-shoot event"),
+        };
+        let target_id = if self.target.is_spawned() {
+            self.target.meteor.id
+        } else {
+            // The rocket we shot consumed an ID, the ID we're looking for will be
+            // generated +1.
+            self.target.meteor.id + 1
+        };
+        Some((rocket_id, target_id))
+    }
+
+    /// Simulates for 'sim_ticks' and checks for a specific rocket-meteor hit.
+    /// Returns false if the rocket would hit something else.
+    /// Panics if the meteor gets hit by something else (why did we aim at it?)
+    /// or if the rocket hits nothing (why can't we aim?)
+    fn look_for_hit(&mut self, sim_ticks: u16, rocket_id: u32, meteor_id: u32,
+                    rng: &mut GameRandom) -> bool {
+        let mut wrong_hit = false;
+        let mut hit = false;
+        // Note that we don't early exit here, we sim the full requested amount
+        // if possible -- callers want the full post-sim potential score
+        for _ in 0..sim_ticks {
+            if self.state.is_done() {
+                // Game ended, ok if we didn't hit, but can leave early.
+                return hit;
+            }
+            for event in self.state.run_tick(rng, self.constants) {
+                match event {
+                    EventInfo::Hit { meteor, rocket } => {
+                        if rocket == rocket_id && meteor == meteor_id {
+                            hit = true;
+                        } else if rocket == rocket_id && meteor != meteor_id {
+                            wrong_hit = true;  // hit something else
+                        } else {
+                            assert!(meteor != meteor_id,
+                                    "Our target meteor got hit. Why did we aim for it?");
+                        }
+                    },
+                    EventInfo::MeteorMiss { id } => {
+                        if id == meteor_id {
+                            // TODO: get collision time to make sure it was
+                            // still <= collision time (to catch aiming bugs)
+                            wrong_hit = true;  // meteor is gone before we hit
+                        }
+                    },
+                    _ => {},
+                }
+            }
+        }
+        assert!(
+            hit || wrong_hit,
+            "Expected rocket {} to hit {}, but no hit found. Bad aim? State:\n{}",
+            rocket_id, meteor_id, self.state.print());
+        hit
+    }
+}
+
 /// Update event info position information to be after the tick update, to
 /// match the positions that the client will receive (easier to verify that
 /// the values are equal and that the simulation worked).
@@ -142,84 +235,13 @@ fn post_update_event_info(info: EventInfo) -> EventInfo {
     }
 }
 
-/// Verify that a given hit will indeed hit the target.
-fn verify_hit(state: &GameState, rng: &mut GameRandom, cannon: &Cannon,
-              aim: &Vec2, target: &MeteorVision, constants: &Constants) -> bool {
-    let rng_state = rng.save_state();
-    let mut state = state.clone();
-    let Some(shoot_event) = state.shoot(cannon, constants, aim, target.meteor.id) else {
-        rng.restore_state(rng_state);
-        return false;
-    };
-    let rocket_id = match shoot_event {
-        EventInfo::Shoot { id, .. } => id,
-        _ => panic!("Shoot returned a non-shoot event"),
-    };
-    let target_id = if target.is_spawned() {
-        target.meteor.id
-    } else {
-        // The rocket we shot consumed an ID, the ID we're looking for will be
-        // generated +1.
-        target.meteor.id + 1
-    };
-    let cannon_pos: Vec2 = cannon.position.into();
-    let rocket_dir = (aim.minus(&cannon_pos)).normalized();
-    let rocket_vel = rocket_dir.scale(constants.rockets.speed);
-    let rocket_circle = MovingCircle {
-        pos: cannon_pos,
-        vel: rocket_vel,
-        size: constants.rockets.size,
-    };
-    let meteor_circle = MovingCircle {
-        pos: rewind_pos_for_physics(target, state.tick),
-        vel: target.meteor.vel,
-        size: constants.meteor_infos[&target.meteor.typ].size,
-    };
-    let Some((t1, t2)) = collision_times(&rocket_circle, &meteor_circle) else {
-        rng.restore_state(rng_state);
-        return false;
-    };
-    let max_t = t1.max(t2);
-    assert!(max_t >= 0.0);
-    for _ in 0..(max_t.ceil() as u16) {
-        if state.is_done() {
-            rng.restore_state(rng_state);
-            return false;
-        }
-        for event in state.run_tick(rng, constants) {
-            match event {
-                EventInfo::Hit { meteor, rocket } => {
-                    if rocket == rocket_id && meteor == target_id {
-                        rng.restore_state(rng_state);
-                        return true;
-                    } else if rocket == rocket_id && meteor != target_id {
-                        // Our rocket hit something else
-                        rng.restore_state(rng_state);
-                        return false;
-                    }
-                    assert!(meteor != target_id,
-                            "Our target meteor got hit. Why did we aim for it?");
-                },
-                EventInfo::MeteorMiss { id } => {
-                    if id == target_id {
-                        rng.restore_state(rng_state);
-                        return false;
-                    }
-                },
-                _ => {},
-            }
-        }
-    }
-    panic!("Expected rocket {} to hit {}, but no hit found. Bad aim? State:\n{}",
-           rocket_id, target_id, state.print());
-}
-
 fn pick_target(state: &GameState, random: &mut GameRandom,
                avoid: &HashSet<u32>, constants: &Constants,
                cannon: &Cannon) -> Option<Target> {
     let existing: Vec<MeteorVision> = state.meteors.iter().cloned()
         .map(|m| MeteorVision::past(m)).collect();
     let upcoming = upcoming_spawns(state, random, cannon, constants);
+    let sim_ticks = max_rocket_lifespan(constants, cannon);
     for meteor_vision in existing.iter().chain(upcoming.iter()) {
         if avoid.contains(&meteor_vision.meteor.id) {
             continue;  // Already targetting it!
@@ -231,12 +253,15 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
         };
         let cannon_pos: Vec2 = cannon.position.into();
         if let Some(aim) = aim_ahead(&cannon_pos, constants.rockets.speed, &target) {
-            if verify_hit(state, random, cannon, &aim, &meteor_vision, constants) {
-                return Some(Target {
-                    aim,
-                    meteor_id: meteor_vision.meteor.id,
-                    is_spawned: meteor_vision.is_spawned()
-                });
+            let mut shot = TentativeShot {
+                aim: &aim,
+                cannon: &cannon,
+                constants: &constants,
+                state: state.clone(),
+                target: &meteor_vision,
+            };
+            if let Some(target) = shot.get_result(sim_ticks, random) {
+                return Some(target);  // TODO: consider more targets, pick best
             }
         }
     }
@@ -277,10 +302,10 @@ fn upcoming_spawns(
 
 /// Maximum number of ticks that a rocket can take to hit a target.
 /// Take the distance from the top right corner to the cannon.
-fn max_rocket_lifespan(constants: &Constants, cannon: &Cannon) -> u32 {
+fn max_rocket_lifespan(constants: &Constants, cannon: &Cannon) -> u16 {
     let top_right = Vec2::new(max_rocket_x(constants), 0.0);
     let max_range = top_right.distance(&cannon.position.into());
-    max_range.ceil() as u32
+    max_range.ceil() as u16
 }
 
 /// For unspawned meteors, move them back by 'delta_t' so that by the time that
