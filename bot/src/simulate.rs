@@ -259,6 +259,64 @@ impl GameState {
         }
         out
     }
+
+    pub fn visualize(&self, cannon: &Cannon, constants: &Constants) {
+        const UNITS_PER_SQUARE_X: f64 = 30.0;
+        const UNITS_PER_SQUARE_Y: f64 = 25.0;
+        const SQUARE_WIDTH: usize = 3;
+        let quantize = |v: Vec2| {
+            ((v.x / UNITS_PER_SQUARE_X).floor() as i32,
+            (v.y / UNITS_PER_SQUARE_Y).floor() as i32)
+        };
+        let (w, h) = quantize(Vec2::new(constants.world.width as f64,
+                                        constants.world.height as f64));
+        let mut rows = vec![vec![" ".repeat(SQUARE_WIDTH); w as usize]; h as usize];
+        let mut paint = |p: (i32, i32), value: String| {
+            let (x, y) = p;
+            assert!(value.len() == SQUARE_WIDTH,
+                    "{} must be len {}", value, SQUARE_WIDTH);
+            if x >= 0 && x < w && y >= 0 && y < h {
+                rows[y as usize][x as usize] = value;
+            }
+        };
+        for rocket in self.rockets.iter() {
+            paint(quantize(rocket.pos),
+                  format!("R{:02}", rocket.id % 100).to_string());
+        }
+        for meteor in self.meteors.iter() {
+            let meteor_type = match meteor.typ {
+                MeteorType::Large => "L",
+                MeteorType::Medium => "M",
+                MeteorType::Small => "S",
+            };
+            let size = constants.meteor_infos[&meteor.typ].size as i32;
+            for dx in -size..=size {
+                for dy in -size..=size {
+                    let p = meteor.pos.add(&Vec2::new(dx as f64, dy as f64));
+                    if p.within_range(&meteor.pos, size as f64) {
+                    paint(
+                        quantize(p),
+                        format!("{}{:02}", meteor_type, meteor.id % 100).to_string());
+                    }
+                }
+            }
+        }
+        paint(quantize(cannon.position.into()), "CCC".to_string());
+        print!("     ");
+        for x in 0..(w as usize) {
+            const LEGEND_WIDTH: usize = 9;  // X=1234  |
+            assert!(LEGEND_WIDTH % SQUARE_WIDTH == 0);
+            const MULTIPLIER: usize = LEGEND_WIDTH / SQUARE_WIDTH;
+            if x % MULTIPLIER == 0 {
+                print!("|X={:<6}", x as f64 * UNITS_PER_SQUARE_X);
+            }
+        }
+        println!();
+        for (i, row) in rows.iter().enumerate() {
+            print!("Y={:3}|", i as f64 * UNITS_PER_SQUARE_Y);
+            println!("{}|", row.join(""));
+        }
+    }
 }
 
 pub fn meteor_in_bounds_x(pos: &Vec2) -> bool {

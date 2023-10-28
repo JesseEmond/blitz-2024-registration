@@ -66,12 +66,15 @@ impl Planner {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
         while !state.is_done() {
-            events.extend(
-                state.run_tick(random, constants).into_iter()
-                    .map(|e| Event {
-                        tick: state.tick,
-                        info: post_update_event_info(e)
-                    }));
+            for event in state.run_tick(random, constants) {
+                if let EventInfo::Hit { meteor, .. } = event {
+                    self.targeted.remove(&meteor);
+                }
+                events.push(Event {
+                    tick: state.tick,
+                    info: post_update_event_info(event)
+                });
+            }
             
             if !state.cannon_ready() {
                 continue;  // Can't shoot, nothing to do.
@@ -80,6 +83,10 @@ impl Planner {
             if let Some(target) = pick_target(&state, random, &self.targeted,
                                               constants, cannon) {
                 self.targeted.insert(target.meteor_id);
+                // TODO: detect when a new target messes with earlier targets
+                // (e.g. hits earlier than another rocket, which changes rng
+                // order and makes the previous shot incorrectly predicted).
+                // See if we ever pick this as the best target (i.e. need to fix?)
                 if !target.is_spawned {
                     self.future_ids.push(target.meteor_id);
                 }
@@ -160,8 +167,8 @@ impl TentativeShot <'_> {
         let target_id = if self.target.is_spawned() {
             self.target.meteor.id
         } else {
-            // The rocket we shot consumed an ID, the ID we're looking for will be
-            // generated +1.
+            // The rocket we shot consumed an ID, the ID we're looking for will
+            // be generated +1.
             self.target.meteor.id + 1
         };
         Some((rocket_id, target_id))
@@ -189,9 +196,16 @@ impl TentativeShot <'_> {
                             hit = true;
                         } else if rocket == rocket_id && meteor != meteor_id {
                             wrong_hit = true;  // hit something else
-                        } else {
-                            assert!(meteor != meteor_id,
-                                    "Our target meteor got hit. Why did we aim for it?");
+                        } else if meteor == meteor_id {
+                            // Note: while it is odd that another rocket would
+                            // hit our targeted meteor, this can happen e.g. if
+                            // a more recent rocket hit earlier than prev
+                            // rockets, messing with the rng state and making
+                            // past predictions invalid.
+                            // assert!(meteor != meteor_id,
+                            //         "Our target meteor M{} got hit by R{}. Why did we aim for it?",
+                            //         meteor_id, rocket);
+                            wrong_hit = true;
                         }
                     },
                     EventInfo::MeteorMiss { id } => {
@@ -207,7 +221,7 @@ impl TentativeShot <'_> {
         }
         assert!(
             hit || wrong_hit,
-            "Expected rocket {} to hit {}, but no hit found. Bad aim? State:\n{}",
+            "Expected rocket R{} to hit M{}, but no hit found. Bad aim? State:\n{}",
             rocket_id, meteor_id, self.state.print());
         hit
     }
