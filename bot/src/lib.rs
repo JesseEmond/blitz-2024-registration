@@ -3,14 +3,14 @@ extern crate rc4;
 extern crate serde;
 extern crate serde_json;
 
-mod game_message;
-mod game_random;
-mod physics;
-mod planner;
-mod seedrandom;
-mod simulate;
-mod spawn_schedule;
-mod vec2;
+pub mod game_message;
+pub mod game_random;
+pub mod physics;
+pub mod planner;
+pub mod seedrandom;
+pub mod simulate;
+pub mod spawn_schedule;
+pub mod vec2;
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;

@@ -55,7 +55,7 @@ pub struct GameRandom {
 
 // Collected from playing games on the server. The number of maps is a
 // relatively small set.
-const OBSERVED_SEEDS: &[&[u8]] = &[
+pub const OBSERVED_SEEDS: &[&[u8]] = &[
     b"Stardreamer", b"Nova_Explorer", b"Celestial_Voyager",
     b"Galactic_Guardian", b"Solar_Serenity"];
 // Found from decompiling the embedded V8 bytecode of the local challenge binary.
