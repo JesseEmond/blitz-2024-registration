@@ -242,6 +242,7 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
         .map(|m| MeteorVision::past(m)).collect();
     let upcoming = upcoming_spawns(state, random, cannon, constants);
     let sim_ticks = max_rocket_lifespan(constants, cannon);
+    let mut best_target: Option<Target> = None;
     for meteor_vision in existing.iter().chain(upcoming.iter()) {
         if avoid.contains(&meteor_vision.meteor.id) {
             continue;  // Already targetting it!
@@ -261,11 +262,14 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
                 target: &meteor_vision,
             };
             if let Some(target) = shot.get_result(sim_ticks, random) {
-                return Some(target);  // TODO: consider more targets, pick best
+                if best_target.as_ref().map(|t| target.potential_score > t.potential_score)
+                    .unwrap_or(true) {
+                    best_target = Some(target);
+                }
             }
         }
     }
-    None
+    best_target
 }
 
 /// Finds meteors that will spawn (spawns or splits) in the near future (in the
