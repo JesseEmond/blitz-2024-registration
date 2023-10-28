@@ -1,12 +1,11 @@
 /// Runs all the known seeds to get the best score for each.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::io::Write;
 use std::rc::Rc;
 use std::time::{Instant};
 
-use nostradamus::game_message::{Cannon, Constants, ExplosionInfos, MeteorInfos, MeteorType, RocketsConstants, Vector, WorldConstants};
+use nostradamus::game_message::{Cannon, Constants, Vector};
 use nostradamus::game_random::{GameRandom, OBSERVED_SEEDS};
 use nostradamus::planner::{Planner};
 use nostradamus::seedrandom::SeedRandom;
@@ -57,7 +56,7 @@ fn main() {
                length=longest_seed);
         std::io::stdout().flush().unwrap();
         let start = Instant::now();
-        let mut random = GameRandom::new(SeedRandom::from_seed(seed));
+        let random = GameRandom::new(SeedRandom::from_seed(seed));
         let mut planner = Planner::new();
         let plan = planner.plan(&cannon, &constants, first_id,
                                 Rc::new(RefCell::new(random)));

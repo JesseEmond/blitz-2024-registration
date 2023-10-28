@@ -24,7 +24,7 @@ pub struct BeamSearch {
 }
 
 impl BeamSearch {
-    pub fn search<S>(&self, start_state: S) -> Option<Vec<S::Action>>
+    pub fn search<S>(&self, start_state: S) -> Vec<S::Action>
         where S: SearchState + Clone, S::Action: Clone {
         let mut beam = vec![Node::new(start_state, Vec::new() )];
         while !beam.is_empty() {
@@ -33,7 +33,9 @@ impl BeamSearch {
             print!("Beam size: {}", beam.len());
             for node in &beam {
                 if best_node.as_ref()
-                    .map(|b| b.state.heuristic() > node.state.heuristic())
+                    .map(|best| node.state.heuristic() > best.state.heuristic() ||
+                         (node.state.heuristic() == best.state.heuristic()
+                          && node.state.evaluate() > best.state.evaluate()))
                     .unwrap_or(true) {
                     best_node = Some(node);
                 }
@@ -41,12 +43,13 @@ impl BeamSearch {
             let best_node = best_node.unwrap();
             if best_node.state.is_final() {
                 println!(" Final score: {}", best_node.state.evaluate());
-                return Some(best_node.actions.clone());
+                return best_node.actions.clone();
             }
-            let best_score = best_node.state.heuristic();
-            print!("  heuristic: {}", best_score);
-            print!("  (score: {})", best_node.state.evaluate());
-            beam.retain(|n| n.state.heuristic() >= best_score);
+            let best_heuristic = best_node.state.heuristic();
+            let best_score = best_node.state.evaluate();
+            print!("  heuristic: {}", best_heuristic);
+            print!("  (score: {})", best_score);
+            beam.retain(|n| n.state.heuristic() == best_heuristic);
             println!("  after pruning: {}", beam.len());
             for node in beam.drain(..) {
                 for action in node.state.generate_actions() {
@@ -60,6 +63,6 @@ impl BeamSearch {
             }
             beam = new_beam;
         }
-        None
+        panic!("Beam empty, game never ended!");
     }
 }

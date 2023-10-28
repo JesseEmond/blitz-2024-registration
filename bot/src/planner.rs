@@ -137,8 +137,8 @@ impl Planner {
 
 #[derive(Clone)]
 enum Action {
-    Shoot { aim: Vec2, target: MeteorVision, },
-    Hold,
+    Shoot { aim: Vec2, target_id: u32, is_future_target: bool, heuristic: u16 },
+    Hold { heuristic: u16, },
 }
 
 #[derive(Clone)]
@@ -151,6 +151,7 @@ struct SearcherState<'a> {
     future_ids: Vec<u32>,
     random: Rc<RefCell<GameRandom>>,
     random_state: usize,
+    heuristic: u16,
 }
 
 impl<'a> SearcherState<'a> {
@@ -164,6 +165,7 @@ impl<'a> SearcherState<'a> {
             future_ids: Vec::new(),
             random: Rc::clone(&random),
             random_state: random.borrow().save_state(),
+            heuristic: 0,
         };
         // Before we make our first action, the server runs a tick.
         searcher_state.run_one_tick();
@@ -180,13 +182,17 @@ impl<'a> SearcherState<'a> {
         self.random_state = self.random.borrow().save_state();
     }
 
+    /// Number of ticks we simulate for when estimating a score.
+    fn heuristic_sim_horizon(&self) -> u16 {
+        max_rocket_lifespan(self.constants, self.cannon)
+    }
+
     fn generate_shoot_actions(&self) -> Vec<Action> {
         let mut actions = Vec::new();
         let existing: Vec<MeteorVision> = self.state.meteors.iter().cloned()
             .map(|m| MeteorVision::past(m)).collect();
         let upcoming = upcoming_spawns(&self.state, &mut self.random.borrow_mut(),
                                        self.cannon, self.constants);
-        let sim_ticks = max_rocket_lifespan(self.constants, self.cannon);
         for meteor_vision in existing.iter().chain(upcoming.iter()) {
             if self.targeted.contains(&meteor_vision.meteor.id) {
                 continue;  // Already targetting it!
@@ -205,25 +211,43 @@ impl<'a> SearcherState<'a> {
                     state: self.state.clone(),
                     target: &meteor_vision,
                 };
-                if let Some(target) = shot.get_result(sim_ticks, &mut self.random.borrow_mut()) {
-                    actions.push(Action::Shoot { aim, target: meteor_vision.clone() });
+                if let Some(target) = shot.get_result(
+                    self.heuristic_sim_horizon(), &mut self.random.borrow_mut()) {
+                    actions.push(Action::Shoot {
+                        aim, target_id: meteor_vision.meteor.id,
+                        is_future_target: !meteor_vision.is_spawned(),
+                        heuristic: target.potential_score
+                    });
                 }
             }
         }
         actions
     }
 
-    fn apply_shot(&mut self, aim: &Vec2, target: &MeteorVision) {
-        self.targeted.insert(target.meteor.id);
+    fn generate_hold_action(&self) -> Action {
+        let mut state = self.state.clone();
+        let rng_state = self.random.borrow().save_state();
+        for _ in 0..self.heuristic_sim_horizon() {
+            if state.is_done() {
+                break;
+            }
+            state.run_tick(&mut self.random.borrow_mut(), self.constants);
+        }
+        self.random.borrow_mut().restore_state(rng_state);
+        Action::Hold { heuristic: state.potential_score(self.constants) }
+    }
+
+    fn apply_shot(&mut self, aim: &Vec2, target_id: u32, is_future_target: bool) {
+        self.targeted.insert(target_id);
         // TODO: detect when a new target messes with earlier targets
         // (e.g. hits earlier than another rocket, which changes rng
         // order and makes the previous shot incorrectly predicted).
         // See if we ever pick this as the best target (i.e. need to fix?)
-        if !target.is_spawned() {
-            self.future_ids.push(target.meteor.id);
+        if is_future_target {
+            self.future_ids.push(target_id);
         }
         let shoot_info = self.state.shoot(self.cannon, self.constants,
-            aim, target.meteor.id).unwrap();
+            aim, target_id).unwrap();
         let rocket_id = match shoot_info {
             EventInfo::Shoot { id, .. } => id,
             _ => panic!("Shoot returned non-shoot event: {:?}", shoot_info),
@@ -255,17 +279,27 @@ impl SearchState for SearcherState<'_> {
         let mut actions = Vec::new();
         if self.state.cannon_ready() {
             // TODO: consider holding when we can shoot?
-            actions.extend(self.generate_shoot_actions());
+            let shoot_actions = self.generate_shoot_actions();
+            if !shoot_actions.is_empty() {
+                actions.extend(shoot_actions);
+            } else {
+                actions.push(self.generate_hold_action());
+            }
         } else {
-            actions.push(Action::Hold);
+            actions.push(self.generate_hold_action());
         }
         actions
     }
 
     fn apply_action(&mut self, action: &Self::Action) {
         match action {
-            Action::Hold => {},
-            Action::Shoot { aim, target } => { self.apply_shot(aim, target); }
+            Action::Hold { heuristic } => {
+                self.heuristic = *heuristic;
+            },
+            Action::Shoot { aim, target_id, is_future_target, heuristic } => {
+                self.heuristic = *heuristic;
+                self.apply_shot(aim, *target_id, *is_future_target);
+            }
         }
         self.run_one_tick();
     }
@@ -275,7 +309,7 @@ impl SearchState for SearcherState<'_> {
     }
 
     fn heuristic(&self) -> u64 {
-        self.state.potential_score(self.constants).into()
+        self.heuristic.into()
     }
 
     fn evaluate(&self) -> u64 {
