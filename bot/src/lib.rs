@@ -7,10 +7,14 @@ pub mod game_message;
 pub mod game_random;
 pub mod physics;
 pub mod planner;
+pub mod search;
 pub mod seedrandom;
 pub mod simulate;
 pub mod spawn_schedule;
 pub mod vec2;
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
@@ -41,14 +45,12 @@ impl Nostradamus {
 
     pub fn plan(&mut self) -> Vec<PlanEvent> {
         let mut planner = Planner::new();
-        let state = self.random.save_state();
         let first_id: u32 = self.game_first_tick.meteors[0].projectile.id
             .parse().unwrap();
         let plan = planner.plan(
-            &self.game_first_tick.cannon, &self.game_first_tick.constants, first_id,
-            &mut self.random);
+            &self.game_first_tick.cannon, &self.game_first_tick.constants,
+            first_id, Rc::new(RefCell::new(self.random.clone())));
         println!("Final score: {}", plan.score);
-        self.random.restore_state(state);
         plan.events.iter().map(|&e| PlanEvent(e)).collect()
     }
 }

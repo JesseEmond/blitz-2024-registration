@@ -1,5 +1,6 @@
 // Rust version of https://github.com/davidbau/seedrandom/blob/released/seedrandom.js
 
+#[derive(Clone)]
 pub struct SeedRandom {
     i: u8,
     j: u8,

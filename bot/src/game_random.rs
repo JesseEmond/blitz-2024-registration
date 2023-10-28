@@ -15,6 +15,7 @@ pub struct MeteorSplit {
     pub typ: MeteorType,
 }
 
+#[derive(Clone)]
 struct RandomPool {
     rng: SeedRandom,
     // Pool of generated random numbers. Used to go forward/backward in history.
@@ -49,6 +50,7 @@ impl RandomPool {
     }
 }
 
+#[derive(Clone)]
 pub struct GameRandom {
     pool: RandomPool,
 }

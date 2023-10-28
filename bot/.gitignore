@@ -1,3 +1,5 @@
 Cargo.lock
 debug/
 target/
+flamegraph.svg
+perf.data
