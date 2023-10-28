@@ -81,7 +81,7 @@ impl GameRandom {
         let degrees = 180f64 - METEOR_GENERATION_CONE_ANGLE / 2f64
               + self.pool.next_random() * METEOR_GENERATION_CONE_ANGLE;
         let mut vel = Vec2::from_polar(r, degrees.to_radians());
-        let large_meteor_info = &constants.meteor_infos[&MeteorType::Large];
+        let large_meteor_info = constants.get_meteor_info(MeteorType::Large);
         let speed = large_meteor_info.approximate_speed * self.next_speed_multiplier();
         vel = vel.normalized().scale(speed);
         MeteorSpawn { pos, vel }
@@ -90,8 +90,8 @@ impl GameRandom {
     pub fn next_splits(&mut self, hit_pos: &Vec2, parent_vel: &Vec2,
                        parent_type: MeteorType, constants: &Constants) -> Vec<MeteorSplit> {
         let mut splits = Vec::new();
-        for explosion in &constants.meteor_infos[&parent_type].explodes_into {
-            let child_info = &constants.meteor_infos[&explosion.meteor_type];
+        for explosion in &constants.get_meteor_info(parent_type).explodes_into {
+            let child_info = constants.get_meteor_info(explosion.meteor_type);
             let radians = explosion.approximate_angle.to_radians();
             let child_dir = parent_vel.rotate(radians).normalized();
             let child_speed = child_info.approximate_speed * self.next_speed_multiplier();
@@ -165,8 +165,7 @@ mod tests {
         let mut game: GameMessage = Default::default();
         game.constants.world.width = 1200;
         game.constants.world.height = 800;
-        game.constants.meteor_infos.insert(MeteorType::Large, Default::default());
-        game.constants.meteor_infos.get_mut(&MeteorType::Large).unwrap().approximate_speed = 3.0;
+        game.constants.meteor_infos.0[MeteorType::Large as usize].approximate_speed = 3.0;
         let mut meteor: Meteor = Default::default();
         meteor.projectile.position = Vector {
             x: 1247.2816883263476f64,

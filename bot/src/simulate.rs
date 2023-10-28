@@ -109,7 +109,7 @@ impl GameState {
             };
             let meteor = MovingCircle {
                 pos: meteor.pos, vel: meteor.vel,
-                size: constants.meteor_infos.get(&meteor.typ).unwrap().size
+                size: constants.get_meteor_info(meteor.typ).size
             };
             let (t1, t2) = collision_times(&rocket, &meteor)?;
             if t1 < 0.0 && t2 < 0.0 { return None; }
@@ -138,7 +138,7 @@ impl GameState {
         rocket.destroyed = true;
         self.meteors[collision.meteor_idx].destroyed = true;
         let parent = self.meteors[collision.meteor_idx].clone();
-        self.score += constants.meteor_infos[&parent.typ].score as u16;
+        self.score += constants.get_meteor_info(parent.typ).score as u16;
         let intersection = make_intersection(
             &MovingCircle {
                 pos: rocket.pos,
@@ -148,7 +148,7 @@ impl GameState {
             &MovingCircle {
                 pos: parent.pos,
                 vel: parent.vel,
-                size: constants.meteor_infos.get(&parent.typ).unwrap().size,
+                size: constants.get_meteor_info(parent.typ).size,
             },
             collision.t);
         let hit_pos = intersection.intersection;
@@ -289,7 +289,7 @@ impl GameState {
                 MeteorType::Medium => "M",
                 MeteorType::Small => "S",
             };
-            let size = constants.meteor_infos[&meteor.typ].size as i32;
+            let size = constants.get_meteor_info(meteor.typ).size as i32;
             for dx in -size..=size {
                 for dy in -size..=size {
                     let p = meteor.pos.add(&Vec2::new(dx as f64, dy as f64));
@@ -341,7 +341,7 @@ pub fn max_rocket_x(constants: &Constants) -> f64 {
 
 pub fn total_score(meteor_type: MeteorType, constants: &Constants) -> u16 {
     let mut score = 0;
-    let info = &constants.meteor_infos[&meteor_type];
+    let info = &constants.get_meteor_info(meteor_type);
     score += info.score as u16;
     for explosion in &info.explodes_into {
         score += total_score(explosion.meteor_type, constants);

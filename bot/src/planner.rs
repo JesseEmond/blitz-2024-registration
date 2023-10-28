@@ -194,7 +194,7 @@ impl<'a> SearcherState<'a> {
             let target = MovingCircle {
                 pos: rewind_pos_for_physics(meteor_vision, self.state.tick),
                 vel: meteor_vision.meteor.vel,
-                size: self.constants.meteor_infos.get(&meteor_vision.meteor.typ).unwrap().size,
+                size: self.constants.get_meteor_info(meteor_vision.meteor.typ).size,
             };
             let cannon_pos: Vec2 = self.cannon.position.into();
             if let Some(aim) = aim_ahead(&cannon_pos, self.constants.rockets.speed, &target) {
@@ -420,7 +420,7 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
         let target = MovingCircle {
             pos: rewind_pos_for_physics(meteor_vision, state.tick),
             vel: meteor_vision.meteor.vel,
-            size: constants.meteor_infos.get(&meteor_vision.meteor.typ).unwrap().size,
+            size: constants.get_meteor_info(meteor_vision.meteor.typ).size,
         };
         let cannon_pos: Vec2 = cannon.position.into();
         if let Some(aim) = aim_ahead(&cannon_pos, constants.rockets.speed, &target) {

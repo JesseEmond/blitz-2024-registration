@@ -1,9 +1,12 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::fmt;
+
+use serde::{Deserialize, Deserializer};
+use serde::de::{MapAccess, Visitor};
 
 pub const MAX_TICKS: u16 = 1000;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GameMessage {
     #[serde(rename = "type")]
@@ -17,22 +20,22 @@ pub struct GameMessage {
     pub score: u32,
 }
 
-#[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Default, Copy, Clone, Debug)]
+#[derive(Deserialize, Hash, PartialEq, Eq, Default, Copy, Clone, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MeteorType {
     #[default]
-    Large,
-    Medium,
-    Small,
+    Large = 0,
+    Medium = 1,
+    Small = 2,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
+#[derive(Deserialize, Clone, Copy, Debug, Default)]
 pub struct Vector {
     pub x: f64,
     pub y: f64,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 pub struct Projectile {
     pub id: String,
     pub position: Vector,
@@ -40,7 +43,7 @@ pub struct Projectile {
     pub size: f64,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Meteor {
     #[serde(flatten)]
@@ -48,35 +51,41 @@ pub struct Meteor {
     pub meteor_type: MeteorType,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 pub struct Cannon {
     pub position: Vector,
     pub orientation: f64,
     pub cooldown: u8,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Constants {
     pub world: WorldConstants,
     pub rockets: RocketsConstants,
     pub cannon_cooldown_ticks: u8,
-    pub meteor_infos: HashMap<MeteorType, MeteorInfos>,
+    pub meteor_infos: AllMeteorInfos,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+impl Constants {
+    pub fn get_meteor_info(&self, meteor_type: MeteorType) -> &MeteorInfos {
+        &self.meteor_infos.0[meteor_type as usize]
+    }
+}
+
+#[derive(Deserialize, Default)]
 pub struct WorldConstants {
     pub width: usize,
     pub height: usize,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 pub struct RocketsConstants {
     pub speed: f64,
     pub size: f64,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MeteorInfos {
     pub score: f64,
@@ -85,11 +94,48 @@ pub struct MeteorInfos {
     pub explodes_into: Vec<ExplosionInfos>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplosionInfos {
     pub meteor_type: MeteorType,
     pub approximate_angle: f64,
+}
+
+#[derive(Default)]
+pub struct AllMeteorInfos(pub [MeteorInfos; 3]);
+
+struct MeteorInfosVisitor {
+    marker: PhantomData<fn() -> AllMeteorInfos>
+}
+
+impl MeteorInfosVisitor {
+    fn new() -> Self {
+        Self { marker: PhantomData }
+    }
+}
+
+impl<'de> Visitor<'de> for MeteorInfosVisitor {
+    type Value = AllMeteorInfos;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("meteor type to meteor infos map")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where M: MapAccess<'de> {
+        let mut map: AllMeteorInfos = Default::default();
+        while let Some((key, value)) = access.next_entry::<MeteorType, MeteorInfos>()? {
+            map.0[key as usize] = value;
+        }
+        Ok(map)
+    }
+}
+
+impl<'de> Deserialize<'de> for AllMeteorInfos {
+    fn deserialize<D>(deserializer: D) -> Result<AllMeteorInfos, D::Error>
+    where D: Deserializer<'de> {
+        deserializer.deserialize_map(MeteorInfosVisitor::new())
+    }
 }
 
 #[cfg(test)]
@@ -154,7 +200,11 @@ mod tests {
             ],
             "score": 42
         }"#;
-        let _game_message: GameMessage = serde_json::from_str(data)?;
+        let game_message: GameMessage = serde_json::from_str(data)?;
+        // Our parsing of meteor infos is custom, verify it is correct
+        assert_eq!(game_message.constants.get_meteor_info(MeteorType::Large).score, 32.2);
+        assert_eq!(game_message.constants.get_meteor_info(MeteorType::Medium).approximate_speed, 2.1);
+        assert_eq!(game_message.constants.get_meteor_info(MeteorType::Small).size, 5.1);
         Ok(())
     }
 }

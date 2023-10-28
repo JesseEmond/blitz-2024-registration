@@ -18,38 +18,38 @@ fn main() {
         orientation: 0.0,
         cooldown: 0,
     };
-    let constants = Constants {
-        world: WorldConstants { width: 1200, height: 800 },
-        rockets: RocketsConstants { speed: 20.0, size: 5.0 },
-        cannon_cooldown_ticks: 10,
-        meteor_infos: HashMap::from([
-            (MeteorType::Large, MeteorInfos {
-                score: 15.0,
-                size: 40.0,
-                approximate_speed: 3.0,
-                explodes_into: vec![
-                    ExplosionInfos { meteor_type: MeteorType::Medium, approximate_angle: -18.0 },
-                    ExplosionInfos { meteor_type: MeteorType::Medium, approximate_angle: 18.0 },
-                ],
-            }),
-            (MeteorType::Medium, MeteorInfos {
-                score: 40.0,
-                size: 20.0,
-                approximate_speed: 9.0,
-                explodes_into: vec![
-                    ExplosionInfos { meteor_type: MeteorType::Small, approximate_angle: -30.0 },
-                    ExplosionInfos { meteor_type: MeteorType::Small, approximate_angle: 0.0 },
-                    ExplosionInfos { meteor_type: MeteorType::Small, approximate_angle: 30.0 },
-                ],
-            }),
-            (MeteorType::Small, MeteorInfos {
-                score: 60.0,
-                size: 5.0,
-                approximate_speed: 13.0,
-                explodes_into: vec![],
-            }),
-        ]),
-    };
+    let constants: Constants = serde_json::from_str(r#"{
+        "world": { "width": 1200, "height": 800 },
+        "rockets": { "speed": 20.0, "size": 5.0 },
+        "cannonCooldownTicks": 10,
+        "meteorInfos": {
+            "LARGE": {
+                "score": 15.0,
+                "size": 40.0,
+                "approximateSpeed": 3.0,
+                "explodesInto": [
+                    { "meteorType": "MEDIUM", "approximateAngle": -18.0 },
+                    { "meteorType": "MEDIUM", "approximateAngle": 18.0 }
+                ]
+            },
+            "MEDIUM": {
+                "score": 40.0,
+                "size": 20.0,
+                "approximateSpeed": 9.0,
+                "explodesInto": [
+                    { "meteorType": "SMALL", "approximateAngle": -30.0 },
+                    { "meteorType": "SMALL", "approximateAngle": 0.0 },
+                    { "meteorType": "SMALL", "approximateAngle": 30.0 }
+                ]
+            },
+            "SMALL": {
+                "score": 60.0,
+                "size": 5.0,
+                "approximateSpeed": 13.0,
+                "explodesInto": []
+            }
+        }
+    }"#).unwrap();
     let longest_seed = OBSERVED_SEEDS.iter().map(|s| s.len()).max().unwrap();
     for &seed in OBSERVED_SEEDS {
         print!("Seed {:0length$} = ",
