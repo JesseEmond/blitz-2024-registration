@@ -12,6 +12,7 @@ pyo3 = { version = "0.20.0", features = ["extension-module"] }
 rc4 = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+lazy_static = "1.4.0"
 
 [profile.release]
 debug = 1

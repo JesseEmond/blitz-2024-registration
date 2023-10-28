@@ -1,6 +1,9 @@
 // Obtained by disassembling the local challenge binary, in default options
 // setting 'METEOR_GENERATION_DELAY_IN_TICKS', in 'game.js'.
+use lazy_static::lazy_static;
+
 use crate::game_message::{MAX_TICKS};
+
 const GENERATION_TICKS_DELAY_START: u16 = 60;
 const GENERATION_TICKS_DELAY_FINISH: u16 = 30;
 
@@ -16,9 +19,26 @@ fn get_current_generation_ticks_delay(tick: u16) -> u16 {
     delay.round() as u16
 }
 
+lazy_static! {
+    /// Precomputed remaining spawns for a given tick.
+    static ref REMAINING_SPAWNS: [usize; MAX_TICKS as usize + 1] = precompute_remaining_spawns();
+}
+
 /// Counts the number of remaining spawns, including 'tick'.
 pub fn remaining_spawns(tick: u16) -> usize {
+    REMAINING_SPAWNS[tick as usize]
+}
+
+fn count_remaining_spawns(tick: u16) -> usize {
     (tick..MAX_TICKS).filter(|&t| is_spawn_tick(t)).count()
+}
+
+fn precompute_remaining_spawns() -> [usize; MAX_TICKS as usize + 1] {
+    let mut precomputed = [0; MAX_TICKS as usize + 1];
+    for tick in 0..=MAX_TICKS {
+        precomputed[tick as usize] = count_remaining_spawns(tick);
+    }
+    precomputed
 }
 
 #[cfg(test)]
