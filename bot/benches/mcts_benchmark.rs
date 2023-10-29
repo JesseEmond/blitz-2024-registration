@@ -18,7 +18,7 @@ fn mcts_stardreamer() -> u64 {
     let searcher_state = SearcherState::new(
         state, &constants, &cannon, Rc::new(RefCell::new(rng)));
     let mut search = MCTS::new(searcher_state);
-    for _ in 0..10000 {
+    for _ in 0..1000 {
         search.run_round();
     }
     // TODO: return best score

@@ -188,11 +188,6 @@ impl<'a> SearcherState<'a> {
         self.random_state = self.random.borrow().save_state();
     }
 
-    /// Number of ticks we simulate for when estimating a score.
-    fn heuristic_sim_horizon(&self) -> u16 {
-        MAX_TICKS
-    }
-
     fn generate_shoot_actions(&self) -> Vec<Action> {
         let mut actions = Vec::new();
         let existing: Vec<MeteorVision> = self.state.meteors.iter().cloned()
@@ -217,8 +212,7 @@ impl<'a> SearcherState<'a> {
                     state: self.state.clone(),
                     target: &meteor_vision,
                 };
-                if let Some(target) = shot.get_result(
-                    self.heuristic_sim_horizon(), &mut self.random.borrow_mut()) {
+                if let Some(target) = shot.get_result(&mut self.random.borrow_mut()) {
                     actions.push(Action::Shoot {
                         aim, target_id: meteor_vision.meteor.id,
                         is_future_target: !meteor_vision.is_spawned(),
@@ -233,16 +227,14 @@ impl<'a> SearcherState<'a> {
     fn generate_hold_action(&self) -> Action {
         let mut state = self.state.clone();
         let rng_state = self.random.borrow().save_state();
-        for _ in 0..self.heuristic_sim_horizon() {
-            if state.is_done() {
+        while !state.is_done() {
+            if state.rockets.is_empty() {
                 break;
             }
             run_server_tick(&mut state, &mut self.random.borrow_mut(), self.constants);
         }
         self.random.borrow_mut().restore_state(rng_state);
-        Action::Hold {
-            potential_score: state.potential_score(self.cannon, self.constants),
-        }
+        Action::Hold { potential_score: state.score }
     }
 
     fn apply_shot(&mut self, aim: &Vec2, target_id: u32, is_future_target: bool) {
@@ -392,17 +384,17 @@ struct TentativeShot<'a> {
 }
 
 impl TentativeShot <'_> {
-    pub fn get_result(&mut self, min_sim_ticks: u16, rng: &mut GameRandom) -> Option<Target> {
+    pub fn get_result(&mut self, rng: &mut GameRandom) -> Option<Target> {
         let rng_state = rng.save_state();
         let mut target = None;
         if let Some((rocket_id, meteor_id)) = self.shoot() {
-            if self.look_for_hit(min_sim_ticks, rocket_id, meteor_id, rng) {
+            if self.look_for_hit(rocket_id, meteor_id, rng) {
                 target = Some(Target {
                     aim: *self.aim,
                     // Note we use the original ID, not the post-simulation one.
                     meteor_id: self.target.meteor.id,
                     is_spawned: self.target.is_spawned(),
-                    potential_score: self.state.potential_score(self.cannon, self.constants),
+                    potential_score: self.state.score,
                 });
             }
         }
@@ -428,18 +420,16 @@ impl TentativeShot <'_> {
         Some((rocket_id, target_id))
     }
 
-    /// Simulates for 'sim_ticks' and checks for a specific rocket-meteor hit.
-    /// Returns false if the rocket would hit something else.
-    /// Panics if the meteor gets hit by something else (why did we aim at it?)
-    /// or if the rocket hits nothing (why can't we aim?)
-    fn look_for_hit(&mut self, sim_ticks: u16, rocket_id: u32, meteor_id: u32,
+    /// Simulates and checks for a specific rocket-meteor hit.
+    /// Returns false if the rocket would hit something else/miss.
+    fn look_for_hit(&mut self, rocket_id: u32, meteor_id: u32,
                     rng: &mut GameRandom) -> bool {
         let mut hit = false;
         // Note that we don't early exit here, we sim the full requested amount
         // if possible -- callers want the full post-sim potential score
-        for _ in 0..sim_ticks {
-            if self.state.is_done() {
-                // Game ended, ok if we didn't hit, but can leave early.
+        while !self.state.is_done() {
+            if self.state.rockets.is_empty() {
+                // No more rockets moving, state is resolved.
                 return hit;
             }
             for event in run_server_tick(&mut self.state, rng, self.constants) {
@@ -506,7 +496,7 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
                 state: state.clone(),
                 target: &meteor_vision,
             };
-            if let Some(target) = shot.get_result(sim_ticks, random) {
+            if let Some(target) = shot.get_result(random) {
                 if best_target.as_ref().map(|t| target.potential_score > t.potential_score)
                     .unwrap_or(true) {
                     best_target = Some(target);
