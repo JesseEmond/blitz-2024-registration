@@ -139,13 +139,13 @@ impl Planner {
 }
 
 #[derive(Clone)]
-enum Action {
+pub enum Action {
     Shoot { aim: Vec2, target_id: u32, is_future_target: bool, heuristic: u16 },
     Hold { heuristic: u16, },
 }
 
 #[derive(Clone)]
-struct SearcherState<'a> {
+pub struct SearcherState<'a> {
     constants: &'a Constants,
     cannon: &'a Cannon,
     state: GameState,
@@ -158,7 +158,7 @@ struct SearcherState<'a> {
 }
 
 impl<'a> SearcherState<'a> {
-    fn new(state: GameState, constants: &'a Constants, cannon: &'a Cannon,
+    pub fn new(state: GameState, constants: &'a Constants, cannon: &'a Cannon,
            random: Rc<RefCell<GameRandom>>) -> Self {
         let mut searcher_state = Self {
             state,

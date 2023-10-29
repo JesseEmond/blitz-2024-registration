@@ -32,6 +32,8 @@ impl<S> Node<S> where S: SearchState {
 pub struct BeamSearch<S: SearchState> {
     beam: Vec<Node<S>>,
     seen_hashes: HashSet<u64>,
+    pub best_heuristic: u64,
+    pub best_evaluation: u64,
 }
 
 impl<S: SearchState + Clone> BeamSearch<S> 
@@ -40,6 +42,8 @@ where S::Action: Clone {
         Self {
             beam: vec![Node::new(start_state, Vec::new())],
             seen_hashes: HashSet::new(),
+            best_heuristic: 0,
+            best_evaluation: 0,
         }
     }
 
@@ -70,6 +74,8 @@ where S::Action: Clone {
         // TODO: re-include prints
         // let best_score = best_node.state.evaluate();
         let best_node = best_node.unwrap();
+        self.best_heuristic = best_node.state.heuristic();
+        self.best_evaluation = best_node.state.evaluate();
         if best_node.state.is_final() {
             // TODO: move to verbose
             println!(" Final score: {}", best_node.state.evaluate());
