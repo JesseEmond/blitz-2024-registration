@@ -29,49 +29,64 @@ impl<S> Node<S> where S: SearchState {
 }
 
 // Beam search where we only keep states that have the same top potential score.
-pub struct BeamSearch {
+pub struct BeamSearch<S: SearchState> {
+    beam: Vec<Node<S>>,
+    seen_hashes: HashSet<u64>,
 }
 
-impl BeamSearch {
-    pub fn search<S>(&self, start_state: S, verbose: bool) -> Vec<S::Action>
-        where S: SearchState + Clone, S::Action: Clone {
-        let mut beam = vec![Node::new(start_state, Vec::new() )];
-        let mut seen_hashes = HashSet::new();
-        while !beam.is_empty() {
-            let mut new_beam = Vec::new();
-            for node in &beam {
-            }
-            let mut best_node: Option<Node<S>> = None;
-            for node in beam.drain(..) {
-                for action in node.state.generate_actions() {
-                    let mut state = node.state.clone();
-                    state.apply_action(&action);
-                    let best_heuristic = best_node.as_ref().map_or(0, |best| best.state.heuristic());
-                    if state.heuristic() < best_heuristic { continue; }
-                    if !seen_hashes.insert(state.transposition_hash()) { continue; }
-                    let mut actions = node.actions.clone();
-                    actions.push(action);
-                    let heuristic = state.heuristic();
-                    let score = state.evaluate();
-                    let new_node = Node::new(state, actions);
-                    let best_score = best_node.as_ref().map_or(0, |best| best.state.evaluate());
-                    if heuristic > best_heuristic || score > best_score {
-                        best_node = Some(new_node.clone());
-                    }
-                    new_beam.push(new_node);
-                }
-            }
-            // TODO: re-include prints
-            // let best_score = best_node.state.evaluate();
-            let best_node = best_node.unwrap();
-            if best_node.state.is_final() {
-                // TODO: move to verbose
-                println!(" Final score: {}", best_node.state.evaluate());
-                return best_node.actions.clone();
-            }
-            new_beam.retain(|n| n.state.heuristic() == best_node.state.heuristic());
-            beam = new_beam;
+impl<S: SearchState + Clone> BeamSearch<S> 
+where S::Action: Clone {
+    pub fn new(start_state: S) -> Self {
+        Self {
+            beam: vec![Node::new(start_state, Vec::new())],
+            seen_hashes: HashSet::new(),
         }
-        panic!("Beam empty, game never ended!");
+    }
+
+    pub fn step(&mut self, verbose: bool) -> Option<Vec<S::Action>> {
+        assert!(!self.beam.is_empty(), "Beam empty! Game did not end?");
+        let mut new_beam = Vec::new();
+        let mut best_node: Option<Node<S>> = None;
+        for node in self.beam.drain(..) {
+            for action in node.state.generate_actions() {
+                let mut state = node.state.clone();
+                state.apply_action(&action);
+                let best_heuristic = best_node.as_ref()
+                    .map_or(0, |best| best.state.heuristic());
+                if state.heuristic() < best_heuristic { continue; }
+                if !self.seen_hashes.insert(state.transposition_hash()) { continue; }
+                let mut actions = node.actions.clone();
+                actions.push(action);
+                let heuristic = state.heuristic();
+                let score = state.evaluate();
+                let new_node = Node::new(state, actions);
+                let best_score = best_node.as_ref().map_or(0, |best| best.state.evaluate());
+                if heuristic > best_heuristic || score > best_score {
+                    best_node = Some(new_node.clone());
+                }
+                new_beam.push(new_node);
+            }
+        }
+        // TODO: re-include prints
+        // let best_score = best_node.state.evaluate();
+        let best_node = best_node.unwrap();
+        if best_node.state.is_final() {
+            // TODO: move to verbose
+            println!(" Final score: {}", best_node.state.evaluate());
+            Some(best_node.actions.clone())
+        } else {
+            new_beam.retain(|n| n.state.heuristic() == best_node.state.heuristic());
+            self.beam = new_beam;
+            None
+        }
+    }
+
+    // Helper function to run a full search.
+    pub fn search(&mut self, verbose: bool) -> Vec<S::Action> {
+        loop {
+            if let Some(actions) = self.step(verbose) {
+                return actions;
+            }
+        }
     }
 }

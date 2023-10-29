@@ -72,10 +72,10 @@ impl Planner {
         random: Rc<RefCell<GameRandom>>) -> Plan {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
-        let beam = BeamSearch{};
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, Rc::clone(&random));
-        beam.search(search_state, /*verbose=*/true);
+        let mut beam = BeamSearch::new(search_state);
+        beam.search(/*verbose=*/true);
         while !state.is_done() {
             for event in state.run_tick(&mut random.borrow_mut(), constants) {
                 if let EventInfo::Hit { meteor, .. } = event {
