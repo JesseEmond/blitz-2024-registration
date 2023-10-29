@@ -334,18 +334,29 @@ impl SearchState for SearcherState<'_> {
         // If two states have the same board state (ignoring ids), the same
         // score, and the same rng state, we consider them equivalent.
         let quantize = |f: f64| (f as f32).to_bits();
+        let cmp_pos = |a: &Vec2, b: &Vec2| {
+            if a.x == b.x { a.y.partial_cmp(&b.y).unwrap() }
+            else { a.x.partial_cmp(&b.y).unwrap() }
+        };
         let mut h = FxHasher::default();
         h.write_u16(self.state.score);
         h.write_usize(self.random_state);
-        // TODO: should sort meteors/rockets first?
-        for m in &self.state.meteors {
+        let mut meteor_indices: Vec<usize> = (0..self.state.meteors.len()).collect();
+        meteor_indices.sort_by(|&i, &j| cmp_pos(
+                &self.state.meteors[i].pos, &self.state.meteors[j].pos));
+        for i in meteor_indices {
+            let m = &self.state.meteors[i];
             h.write_u32(quantize(m.pos.x));
             h.write_u32(quantize(m.pos.y));
             h.write_u32(quantize(m.vel.x));
             h.write_u32(quantize(m.vel.y));
             h.write_u8(m.typ as u8);
         }
-        for r in &self.state.rockets {
+        let mut rocket_indices: Vec<usize> = (0..self.state.rockets.len()).collect();
+        rocket_indices.sort_by(|&i, &j| cmp_pos(
+                &self.state.rockets[i].pos, &self.state.rockets[j].pos));
+        for i in rocket_indices {
+            let r = &self.state.rockets[i];
             h.write_u32(quantize(r.pos.x));
             h.write_u32(quantize(r.pos.y));
             h.write_u32(quantize(r.vel.x));
