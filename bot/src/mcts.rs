@@ -70,10 +70,11 @@ pub struct MCTS<S: SearchState> {
     nodes: Vec<Node<S>>,
     /// Max possible score, used to normalize scores for UCT.
     max_score: u64,
-    best_seen_score: u64,
     rounds: usize,
     seen_hashes: HashSet<u64>,
     skipped_rounds: usize,  // rounds we skipped thanks to hashes
+    best_seen_score: u64,
+    best_path: Path,
 }
 
 impl<S: SearchState + Clone> MCTS<S> {
@@ -85,15 +86,27 @@ impl<S: SearchState + Clone> MCTS<S> {
             start_state,
             nodes: vec![root],
             max_score: theoretical_max.into(),
-            best_seen_score: 0,
             rounds: 0,
             skipped_rounds: 0,
             seen_hashes: HashSet::new(),
+            best_seen_score: 0,
+            best_path: Path::new(),
         }
     }
 
     fn root_idx(&self) -> usize {
         0
+    }
+
+    pub fn best_actions_sequence(&self) -> Vec<&S::Action> {
+        let mut seq = Vec::new();
+        let mut node_idx = self.root_idx();
+        for &child_idx in &self.best_path {
+            let child = &self.nodes[node_idx].children.as_ref().unwrap()[child_idx];
+            seq.push(&child.action);
+            node_idx = child.node_idx;
+        }
+        seq
     }
 
     pub fn run_round(&mut self) {
@@ -114,6 +127,7 @@ impl<S: SearchState + Clone> MCTS<S> {
             println!("Score: {} ({} rounds ({} skipped))", score, self.rounds,
                      self.skipped_rounds);
             self.best_seen_score = score;
+            self.best_path = path.clone();
         }
     }
 

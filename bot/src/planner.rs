@@ -5,10 +5,11 @@ use std::rc::Rc;
 
 use rustc_hash::FxHasher;
 
-use crate::game_message::{Cannon, Constants, MAX_TICKS};
+use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
+use crate::mcts::MCTS;
 use crate::physics::{aim_ahead, MovingCircle};
-use crate::search::{BeamSearch, SearchState};
+use crate::search::SearchState;
 use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
 use crate::vec2::Vec2;
 
@@ -74,8 +75,10 @@ impl Planner {
         let mut events = Vec::new();
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, Rc::clone(&random));
-        let mut beam = BeamSearch::new(search_state);
-        beam.search(/*verbose=*/true);
+        // let mut mcts = MCTS::new(search_state);
+        // for _ in 0..1000 {  // TODO make configurable
+        //     mcts.run_round();
+        // }
         while !state.is_done() {
             for event in run_server_tick(
                 &mut state, &mut random.borrow_mut(), constants) {
