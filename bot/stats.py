@@ -17,7 +17,7 @@ class Stats(game_events.Listener):
 
         self.score = 0
         self.lost_score = 0
-        self.wiffs = 0
+        self.whiffs = 0
         self.hit_stats = {type_: 0 for type_ in iter(MeteorType)}
         self.miss_stats = {type_: 0 for type_ in iter(MeteorType)}
         self.wrong_targets = 0
@@ -68,9 +68,9 @@ class Stats(game_events.Listener):
         self.lost_score += total_score
         self.miss_stats[meteor.meteorType] += 1
 
-    def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
+    def on_whiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         print(f'Rocket {rocket_id} hit NOTHING (how embarassing!)')
-        self.wiffs += 1
+        self.whiffs += 1
 
     def on_new_rocket(self, events: game_events.GameEvents,
                       rocket_id: str) -> None:
@@ -161,10 +161,10 @@ class Stats(game_events.Listener):
         print(f'{self.asserter.pedantic_eval_fails} pedantic invariants broken.')
 
         print()
-        if self.wiffs == 0:
+        if self.whiffs == 0:
             print('All shots hit.')
         else:
-            print(f'[!!!] {self.wiffs} SHOT(S) MISSED [!!!]')
+            print(f'[!!!] {self.whiffs} SHOT(S) MISSED [!!!]')
 
         print()
         print(f'Ticks spent idle: {self.idle_ticks}')

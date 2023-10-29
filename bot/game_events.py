@@ -30,7 +30,7 @@ class Listener:
         pass
     def on_miss(self, events: 'GameEvents', meteor_id: str) -> None:
         pass
-    def on_wiff(self, events: 'GameEvents', rocket_id: str) -> None:
+    def on_whiff(self, events: 'GameEvents', rocket_id: str) -> None:
         pass
     def on_new_rocket(self, events: 'GameEvents', rocket_id: str) -> None:
         pass
@@ -229,7 +229,7 @@ class GameEvents:
                                  self.previous_tick + hit_time)
             meteors.remove(hit_meteor)
         else:
-            self.on_wiff(rocket_id)
+            self.on_whiff(rocket_id)
         return splits
 
     def on_hit(self, rocket_id: str, meteor_id: str, t: float) -> List[MeteorSplit]:
@@ -269,7 +269,7 @@ class GameEvents:
             listener.on_miss(self, meteor_id)
         del self.meteors[meteor_id]
 
-    def on_wiff(self, rocket_id: str) -> None:
+    def on_whiff(self, rocket_id: str) -> None:
         for listener in self.listeners:
-            listener.on_wiff(self, rocket_id)
+            listener.on_whiff(self, rocket_id)
         del self.rockets[rocket_id]

@@ -185,8 +185,7 @@ impl ServerSimulation<'_> {
             rocket.pos = rocket.pos.add(&rocket.vel);
             // Note: server does not check for y bounds for rockets! Confirmed
             // by testing a shot straight up -- rockets never disappear.
-            // Note: not reporting wiff events when this is false, as these
-            // should not happen with a bot with good search.
+            // Note: we don't report an event if we missed (i.e. took a bad shot)
             rocket_in_bounds_x(self.constants, &rocket.pos)
         });
     }

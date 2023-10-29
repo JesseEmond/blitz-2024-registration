@@ -102,9 +102,9 @@ class PlanFollower(game_events.Listener):
             f'Rocket {rocket_id} did not hit the intended '
             f'{self.rocket_targets[rocket_id]}, instead it hit {meteor_id}')
 
-    def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
+    def on_whiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         self.asserter.expect(False,
-            f'Rocket {rocket_id} wiffed! '
+            f'Rocket {rocket_id} whiffed! '
             f'Target was: {self.rocket_targets.get(rocket_id)} '
             f'Plan: {self.print_plan()}')
 

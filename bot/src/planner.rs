@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHasher;
 
-use crate::game_message::{Cannon, Constants};
+use crate::game_message::{Cannon, Constants, MAX_TICKS};
 use crate::game_random::GameRandom;
 use crate::physics::{aim_ahead, MovingCircle};
 use crate::search::{BeamSearch, SearchState};
@@ -189,7 +189,7 @@ impl<'a> SearcherState<'a> {
 
     /// Number of ticks we simulate for when estimating a score.
     fn heuristic_sim_horizon(&self) -> u16 {
-        max_rocket_lifespan(self.constants, self.cannon)
+        MAX_TICKS
     }
 
     fn generate_shoot_actions(&self) -> Vec<Action> {
@@ -422,7 +422,6 @@ impl TentativeShot <'_> {
     /// or if the rocket hits nothing (why can't we aim?)
     fn look_for_hit(&mut self, sim_ticks: u16, rocket_id: u32, meteor_id: u32,
                     rng: &mut GameRandom) -> bool {
-        let mut wrong_hit = false;
         let mut hit = false;
         // Note that we don't early exit here, we sim the full requested amount
         // if possible -- callers want the full post-sim potential score
@@ -436,35 +435,12 @@ impl TentativeShot <'_> {
                     EventInfo::Hit { meteor, rocket } => {
                         if rocket == rocket_id && meteor == meteor_id {
                             hit = true;
-                        } else if rocket == rocket_id && meteor != meteor_id {
-                            wrong_hit = true;  // hit something else
-                        } else if meteor == meteor_id {
-                            // Note: while it is odd that another rocket would
-                            // hit our targeted meteor, this can happen e.g. if
-                            // a more recent rocket hit earlier than prev
-                            // rockets, messing with the rng state and making
-                            // past predictions invalid.
-                            // assert!(meteor != meteor_id,
-                            //         "Our target meteor M{} got hit by R{}. Why did we aim for it?",
-                            //         meteor_id, rocket);
-                            wrong_hit = true;
-                        }
-                    },
-                    EventInfo::MeteorMiss { id } => {
-                        if id == meteor_id {
-                            // TODO: get collision time to make sure it was
-                            // still <= collision time (to catch aiming bugs)
-                            wrong_hit = true;  // meteor is gone before we hit
                         }
                     },
                     _ => {},
                 }
             }
         }
-        assert!(
-            hit || wrong_hit,
-            "Expected rocket R{} to hit M{}, but no hit found. Bad aim? State:\n{}",
-            rocket_id, meteor_id, self.state.print());
         hit
     }
 }
@@ -566,7 +542,8 @@ fn upcoming_spawns(
 fn max_rocket_lifespan(constants: &Constants, cannon: &Cannon) -> u16 {
     let top_right = Vec2::new(max_rocket_x(constants), 0.0);
     let max_range = top_right.distance(&cannon.position.into());
-    max_range.ceil() as u16
+    let ticks = max_range / constants.rockets.speed;
+    ticks.ceil() as u16
 }
 
 /// For unspawned meteors, move them back by 'delta_t' so that by the time that

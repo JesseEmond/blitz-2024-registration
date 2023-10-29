@@ -88,9 +88,9 @@ class TargetTracker(game_events.Listener):
     def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
         self.dont_expect_spawns(meteor_id)
 
-    def on_wiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
+    def on_whiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         if not self.asserter.expect(rocket_id not in self.rocket_targets,
-            f'Wiffed, but did not clear target beforehand? {rocket_id}'):
+            f'Whiffed, but did not clear target beforehand? {rocket_id}'):
             del self.rocket_targets[rocket_id]
 
     def on_after_events(self, events: game_events.GameEvents, game: GameMessage,
