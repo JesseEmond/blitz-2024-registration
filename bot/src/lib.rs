@@ -5,6 +5,7 @@ extern crate serde_json;
 
 pub mod game_message;
 pub mod game_random;
+pub mod mcts;
 pub mod physics;
 pub mod planner;
 pub mod search;

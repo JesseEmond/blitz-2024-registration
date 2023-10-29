@@ -10,8 +10,8 @@ use nostradamus::seedrandom::SeedRandom;
 use nostradamus::search::BeamSearch;
 use nostradamus::simulate::GameState;
 
-/// Search benchmarking on the 'Stardreamer' seed
-fn search_stardreamer() -> u64 {
+/// BeamSearch benchmarking on the 'Stardreamer' seed
+fn beam_search_stardreamer() -> u64 {
     let rng = GameRandom::new(SeedRandom::from_seed(b"Stardreamer"));
     let (constants, cannon) = default_game_settings();
     let state = GameState::new(/*first_id=*/0);
@@ -26,7 +26,7 @@ fn search_stardreamer() -> u64 {
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("reduce-sampled-size");
     group.sample_size(10);
-    group.bench_function("search_stardreamer", |b| b.iter(|| search_stardreamer()));
+    group.bench_function("beam_search_stardreamer", |b| b.iter(|| beam_search_stardreamer()));
     group.finish();
 }
 

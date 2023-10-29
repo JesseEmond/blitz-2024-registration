@@ -250,8 +250,11 @@ impl GameState {
         id
     }
 
-    pub fn potential_score(&self, constants: &Constants) -> u16 {
+    pub fn potential_score(&self, cannon: &Cannon, constants: &Constants) -> u16 {
         let board_score: u16 = self.meteors.iter()
+            // Ignore meteors that we can't ever hit
+            // TODO: re-include once we verify it helps
+            // .filter(|&m| m.pos.x + constants.get_meteor_info(m.typ).size >= cannon.position.x)
             .map(|m| total_score(m.typ, constants)).sum();
         let large_score = total_score(MeteorType::Large, constants);
         let potential_score = large_score * remaining_spawns(self.tick) as u16;

@@ -141,8 +141,8 @@ impl Planner {
 
 #[derive(Clone)]
 pub enum Action {
-    Shoot { aim: Vec2, target_id: u32, is_future_target: bool, heuristic: u16 },
-    Hold { heuristic: u16, },
+    Shoot { aim: Vec2, target_id: u32, is_future_target: bool, potential_score: u16 },
+    Hold { potential_score: u16, },
 }
 
 #[derive(Clone)]
@@ -155,12 +155,13 @@ pub struct SearcherState<'a> {
     future_ids: Vec<u32>,
     random: Rc<RefCell<GameRandom>>,
     random_state: usize,
-    heuristic: u16,
+    potential_score: u16,
 }
 
 impl<'a> SearcherState<'a> {
     pub fn new(state: GameState, constants: &'a Constants, cannon: &'a Cannon,
            random: Rc<RefCell<GameRandom>>) -> Self {
+        let potential_score = state.potential_score(cannon, constants);
         let mut searcher_state = Self {
             state,
             constants,
@@ -169,7 +170,7 @@ impl<'a> SearcherState<'a> {
             future_ids: Vec::new(),
             random: Rc::clone(&random),
             random_state: random.borrow().save_state(),
-            heuristic: 0,
+            potential_score,
         };
         // Before we make our first action, the server runs a tick.
         searcher_state.run_one_tick();
@@ -221,7 +222,7 @@ impl<'a> SearcherState<'a> {
                     actions.push(Action::Shoot {
                         aim, target_id: meteor_vision.meteor.id,
                         is_future_target: !meteor_vision.is_spawned(),
-                        heuristic: target.potential_score
+                        potential_score: target.potential_score
                     });
                 }
             }
@@ -239,7 +240,9 @@ impl<'a> SearcherState<'a> {
             run_server_tick(&mut state, &mut self.random.borrow_mut(), self.constants);
         }
         self.random.borrow_mut().restore_state(rng_state);
-        Action::Hold { heuristic: state.potential_score(self.constants) }
+        Action::Hold {
+            potential_score: state.potential_score(self.cannon, self.constants),
+        }
     }
 
     fn apply_shot(&mut self, aim: &Vec2, target_id: u32, is_future_target: bool) {
@@ -298,11 +301,11 @@ impl SearchState for SearcherState<'_> {
 
     fn apply_action(&mut self, action: &Self::Action) {
         match action {
-            Action::Hold { heuristic } => {
-                self.heuristic = *heuristic;
+            Action::Hold { potential_score } => {
+                self.potential_score = *potential_score;
             },
-            Action::Shoot { aim, target_id, is_future_target, heuristic } => {
-                self.heuristic = *heuristic;
+            Action::Shoot { aim, target_id, is_future_target, potential_score } => {
+                self.potential_score = *potential_score;
                 self.apply_shot(aim, *target_id, *is_future_target);
             }
         }
@@ -313,12 +316,21 @@ impl SearchState for SearcherState<'_> {
         self.state.is_done()
     }
 
-    fn heuristic(&self) -> u64 {
-        self.heuristic.into()
+    fn theoretical_max(&self) -> u64 {
+        self.potential_score.into()
     }
 
     fn evaluate(&self) -> u64 {
         self.state.score.into()
+    }
+
+    fn greedy_pick_action(&self, actions: &Vec<Action>) -> usize {
+        actions.iter().enumerate()
+            .max_by_key(|(_, a)| match a {
+                Action::Shoot { potential_score, .. } => potential_score,
+                Action::Hold { potential_score } => potential_score,
+            })
+            .map(|(idx, _)| idx).unwrap()
     }
 
     fn is_equivalent(&self, other: &Self) -> bool {
@@ -326,7 +338,7 @@ impl SearchState for SearcherState<'_> {
         // what's on the board (and the random state it assumed). Regardless of
         // what we're aiming at, if those are the same, then the game will
         // develop in the same way.
-        self.heuristic == other.heuristic &&
+        self.potential_score == other.potential_score &&
             self.random_state == other.random_state &&
             self.state.is_equivalent(&other.state, 1e-7)
     }
@@ -390,7 +402,7 @@ impl TentativeShot <'_> {
                     // Note we use the original ID, not the post-simulation one.
                     meteor_id: self.target.meteor.id,
                     is_spawned: self.target.is_spawned(),
-                    potential_score: self.state.potential_score(self.constants),
+                    potential_score: self.state.potential_score(self.cannon, self.constants),
                 });
             }
         }
