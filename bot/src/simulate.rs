@@ -61,55 +61,55 @@ struct Collision {
     t: f64,
 }
 
-impl GameState {
-    pub fn new(first_id: u32) -> Self {
-        Self {
-            tick: 0,
-            next_id: first_id,
-            meteors: Vec::new(),
-            rockets: Vec::new(),
-            cooldown: 0,
-            score: 0,
-        }
-    }
+pub fn run_server_tick(state: &mut GameState, rng: &mut GameRandom,
+                       constants: &Constants) -> Vec<EventInfo> {
+    ServerSimulation { state, rng, constants }.tick()
+}
 
-    pub fn run_tick(&mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<EventInfo> {
+struct ServerSimulation<'a> {
+    state: &'a mut GameState,
+    rng: &'a mut GameRandom,
+    constants: &'a Constants,
+}
+
+impl ServerSimulation<'_> {
+    fn tick(&mut self) -> Vec<EventInfo> {
         let mut events = Vec::new();
-        if is_spawn_tick(self.tick) {
-            events.push(self.spawn_meteor(rng, constants));
+        if is_spawn_tick(self.state.tick) {
+            events.push(self.spawn_meteor());
         }
-        events.extend(self.find_and_handle_collisions(rng, constants));
-        events.extend(self.update_meteors(constants));
-        self.update_rockets(constants);
-        self.tick += 1;
+        events.extend(self.find_and_handle_collisions());
+        events.extend(self.update_meteors());
+        self.update_rockets();
+        self.state.tick += 1;
         self.update_cannon();
         events
     }
 
-    fn find_and_handle_collisions(&mut self, rng: &mut GameRandom, constants: &Constants) -> Vec<EventInfo> {
-        let mut all_collisions: Vec<Collision> = (0usize..self.rockets.len())
+    fn find_and_handle_collisions(&mut self) -> Vec<EventInfo> {
+        let mut all_collisions: Vec<Collision> = (0usize..self.state.rockets.len())
             .flat_map(|rocket_idx| {
-                self.rocket_collisions(constants, rocket_idx)
+                self.rocket_collisions(rocket_idx)
             }).collect();
         all_collisions.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap());
         let mut events = Vec::new();
         for collision in all_collisions {
-            events.extend(self.handle_collision(&collision, rng, constants));
+            events.extend(self.handle_collision(&collision));
         }
-        self.rockets.retain(|rocket| { !rocket.destroyed });
-        self.meteors.retain(|meteor| { !meteor.destroyed });
+        self.state.rockets.retain(|rocket| { !rocket.destroyed });
+        self.state.meteors.retain(|meteor| { !meteor.destroyed });
         events
     }
 
-    fn rocket_collisions(&self, constants: &Constants, rocket_idx: usize) -> Vec<Collision> {
-        self.meteors.iter().enumerate().filter_map(move |(idx, meteor)| {
-            let rocket = &self.rockets[rocket_idx];
+    fn rocket_collisions(&self, rocket_idx: usize) -> Vec<Collision> {
+        self.state.meteors.iter().enumerate().filter_map(move |(idx, meteor)| {
+            let rocket = &self.state.rockets[rocket_idx];
             let rocket = MovingCircle {
-                pos: rocket.pos, vel: rocket.vel, size: constants.rockets.size
+                pos: rocket.pos, vel: rocket.vel, size: self.constants.rockets.size
             };
             let meteor = MovingCircle {
                 pos: meteor.pos, vel: meteor.vel,
-                size: constants.get_meteor_info(meteor.typ).size
+                size: self.constants.get_meteor_info(meteor.typ).size
             };
             let (t1, t2) = collision_times(&rocket, &meteor)?;
             if t1 < 0.0 && t2 < 0.0 { return None; }
@@ -123,38 +123,38 @@ impl GameState {
         }).collect()
     }
 
-    fn handle_collision(&mut self, collision: &Collision, rng: &mut GameRandom,
-                        constants: &Constants) -> Vec<EventInfo> {
+    fn handle_collision(&mut self, collision: &Collision) -> Vec<EventInfo> {
         let mut events = Vec::new();
-        if self.rockets[collision.rocket_idx].destroyed ||
-            self.meteors[collision.meteor_idx].destroyed {
+        if self.state.rockets[collision.rocket_idx].destroyed ||
+            self.state.meteors[collision.meteor_idx].destroyed {
             return events;
         }
         events.push(EventInfo::Hit {
-            rocket: self.rockets[collision.rocket_idx].id,
-            meteor: self.meteors[collision.meteor_idx].id,
+            rocket: self.state.rockets[collision.rocket_idx].id,
+            meteor: self.state.meteors[collision.meteor_idx].id,
         });
-        let rocket = &mut self.rockets[collision.rocket_idx];
+        let rocket = &mut self.state.rockets[collision.rocket_idx];
         rocket.destroyed = true;
-        self.meteors[collision.meteor_idx].destroyed = true;
-        let parent = self.meteors[collision.meteor_idx].clone();
-        self.score += constants.get_meteor_info(parent.typ).score as u16;
+        self.state.meteors[collision.meteor_idx].destroyed = true;
+        let parent = self.state.meteors[collision.meteor_idx].clone();
+        self.state.score += self.constants.get_meteor_info(parent.typ).score as u16;
         let intersection = make_intersection(
             &MovingCircle {
                 pos: rocket.pos,
                 vel: rocket.vel,
-                size: constants.rockets.size,
+                size: self.constants.rockets.size,
             },
             &MovingCircle {
                 pos: parent.pos,
                 vel: parent.vel,
-                size: constants.get_meteor_info(parent.typ).size,
+                size: self.constants.get_meteor_info(parent.typ).size,
             },
             collision.t);
         let hit_pos = intersection.intersection;
-        for split in rng.next_splits(&hit_pos, &parent.vel, parent.typ, constants) {
-            let id = self.get_next_id();
-            self.meteors.push(Meteor::new(id, split.pos, split.vel, split.typ));
+        for split in self.rng.next_splits(
+            &hit_pos, &parent.vel, parent.typ, self.constants) {
+            let id = self.state.get_next_id();
+            self.state.meteors.push(Meteor::new(id, split.pos, split.vel, split.typ));
             events.push(EventInfo::MeteorSplit {
                 id,
                 parent_id: parent.id,
@@ -166,12 +166,12 @@ impl GameState {
         events
     }
 
-    fn update_meteors(&mut self, constants: &Constants) -> Vec<EventInfo> {
+    fn update_meteors(&mut self) -> Vec<EventInfo> {
         let mut events = Vec::new();
-        self.meteors.retain_mut(|meteor| {
+        self.state.meteors.retain_mut(|meteor| {
             meteor.pos = meteor.pos.add(&meteor.vel);
             let keep = meteor_in_bounds_x(&meteor.pos)
-                && meteor_in_bounds_y(constants, &meteor.pos);
+                && meteor_in_bounds_y(self.constants, &meteor.pos);
             if !keep {
                 events.push(EventInfo::MeteorMiss { id: meteor.id });
             }
@@ -180,20 +180,46 @@ impl GameState {
         events
     }
 
-    fn update_rockets(&mut self, constants: &Constants) {
-        self.rockets.retain_mut(|rocket| {
+    fn update_rockets(&mut self) {
+        self.state.rockets.retain_mut(|rocket| {
             rocket.pos = rocket.pos.add(&rocket.vel);
             // Note: server does not check for y bounds for rockets! Confirmed
             // by testing a shot straight up -- rockets never disappear.
             // Note: not reporting wiff events when this is false, as these
             // should not happen with a bot with good search.
-            rocket_in_bounds_x(constants, &rocket.pos)
+            rocket_in_bounds_x(self.constants, &rocket.pos)
         });
     }
 
     fn update_cannon(&mut self) {
-        if self.cooldown > 0 {
-            self.cooldown -= 1;
+        if self.state.cooldown > 0 {
+            self.state.cooldown -= 1;
+        }
+    }
+
+    fn spawn_meteor(&mut self) -> EventInfo {
+        let spawn = self.rng.next_spawn(self.constants);
+        let id = self.state.get_next_id();
+        let typ = MeteorType::Large;
+        self.state.meteors.push(Meteor::new(id, spawn.pos, spawn.vel, typ));
+        EventInfo::MeteorSpawn {
+            id,
+            pos: spawn.pos,
+            vel: spawn.vel,
+            typ,
+        }
+    }
+}
+
+impl GameState {
+    pub fn new(first_id: u32) -> Self {
+        Self {
+            tick: 0,
+            next_id: first_id,
+            meteors: Vec::new(),
+            rockets: Vec::new(),
+            cooldown: 0,
+            score: 0,
         }
     }
 
@@ -209,19 +235,6 @@ impl GameState {
         self.rockets.push(Rocket::new(id, pos, vel));
         self.cooldown = constants.cannon_cooldown_ticks;
         Some(EventInfo::Shoot { id, pos: *target, target_id })
-    }
-
-    fn spawn_meteor(&mut self, rng: &mut GameRandom, constants: &Constants) -> EventInfo {
-        let spawn = rng.next_spawn(constants);
-        let id = self.get_next_id();
-        let typ = MeteorType::Large;
-        self.meteors.push(Meteor::new(id, spawn.pos, spawn.vel, typ));
-        EventInfo::MeteorSpawn {
-            id,
-            pos: spawn.pos,
-            vel: spawn.vel,
-            typ,
-        }
     }
 
     pub fn cannon_ready(&self) -> bool {
@@ -332,9 +345,9 @@ impl GameState {
                 a.id == b.id && a.pos.within_range(&b.pos, precision) &&
                     a.vel.within_range(&b.vel, precision)
             })
-            
     }
 }
+
 
 pub fn meteor_in_bounds_x(pos: &Vec2) -> bool {
     // Note: server does not check the right side, confirmed via reversing the

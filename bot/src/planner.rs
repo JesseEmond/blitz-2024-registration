@@ -9,7 +9,7 @@ use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
 use crate::physics::{aim_ahead, MovingCircle};
 use crate::search::{BeamSearch, SearchState};
-use crate::simulate::{max_rocket_x, EventInfo, GameState, Meteor};
+use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
 use crate::vec2::Vec2;
 
 /// Events at the time where the client would see them (i.e. the tick after
@@ -77,7 +77,8 @@ impl Planner {
         let mut beam = BeamSearch::new(search_state);
         beam.search(/*verbose=*/true);
         while !state.is_done() {
-            for event in state.run_tick(&mut random.borrow_mut(), constants) {
+            for event in run_server_tick(
+                &mut state, &mut random.borrow_mut(), constants) {
                 if let EventInfo::Hit { meteor, .. } = event {
                     self.targeted.remove(&meteor);
                 }
@@ -177,7 +178,8 @@ impl<'a> SearcherState<'a> {
 
     fn run_one_tick(&mut self) {
         self.random.borrow_mut().restore_state(self.random_state);
-        for event in self.state.run_tick(&mut self.random.borrow_mut(), self.constants) {
+        for event in run_server_tick(
+            &mut self.state, &mut self.random.borrow_mut(), self.constants) {
             if let EventInfo::Hit { meteor, .. } = event {
                 self.targeted.remove(&meteor);
             }
@@ -234,7 +236,7 @@ impl<'a> SearcherState<'a> {
             if state.is_done() {
                 break;
             }
-            state.run_tick(&mut self.random.borrow_mut(), self.constants);
+            run_server_tick(&mut state, &mut self.random.borrow_mut(), self.constants);
         }
         self.random.borrow_mut().restore_state(rng_state);
         Action::Hold { heuristic: state.potential_score(self.constants) }
@@ -429,7 +431,7 @@ impl TentativeShot <'_> {
                 // Game ended, ok if we didn't hit, but can leave early.
                 return hit;
             }
-            for event in self.state.run_tick(rng, self.constants) {
+            for event in run_server_tick(&mut self.state, rng, self.constants) {
                 match event {
                     EventInfo::Hit { meteor, rocket } => {
                         if rocket == rocket_id && meteor == meteor_id {
@@ -541,7 +543,7 @@ fn upcoming_spawns(
             break;
         }
         let event_tick = state.tick;
-        for event in state.run_tick(random, constants) {
+        for event in run_server_tick(&mut state, random, constants) {
             match event {
                 EventInfo::MeteorSpawn { id, pos, vel, typ } => {
                     spawns.push(MeteorVision::future(
