@@ -1,6 +1,9 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::hash::Hasher;
 use std::rc::Rc;
+
+use rustc_hash::FxHasher;
 
 use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
@@ -72,7 +75,7 @@ impl Planner {
         let beam = BeamSearch{};
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, Rc::clone(&random));
-        beam.search(search_state);
+        beam.search(search_state, /*verbose=*/true);
         while !state.is_done() {
             for event in state.run_tick(&mut random.borrow_mut(), constants) {
                 if let EventInfo::Hit { meteor, .. } = event {
@@ -314,6 +317,41 @@ impl SearchState for SearcherState<'_> {
 
     fn evaluate(&self) -> u64 {
         self.state.score.into()
+    }
+
+    fn is_equivalent(&self, other: &Self) -> bool {
+        // Note targets/future ids being different is fine, all we care about is
+        // what's on the board (and the random state it assumed). Regardless of
+        // what we're aiming at, if those are the same, then the game will
+        // develop in the same way.
+        self.heuristic == other.heuristic &&
+            self.random_state == other.random_state &&
+            self.state.is_equivalent(&other.state, 1e-7)
+    }
+
+    fn transposition_hash(&self) -> u64 {
+        // Note that we only hash things that meaningfully distinguish states.
+        // If two states have the same board state (ignoring ids), the same
+        // score, and the same rng state, we consider them equivalent.
+        let quantize = |f: f64| (f as f32).to_bits();
+        let mut h = FxHasher::default();
+        h.write_u16(self.state.score);
+        h.write_usize(self.random_state);
+        // TODO: should sort meteors/rockets first?
+        for m in &self.state.meteors {
+            h.write_u32(quantize(m.pos.x));
+            h.write_u32(quantize(m.pos.y));
+            h.write_u32(quantize(m.vel.x));
+            h.write_u32(quantize(m.vel.y));
+            h.write_u8(m.typ as u8);
+        }
+        for r in &self.state.rockets {
+            h.write_u32(quantize(r.pos.x));
+            h.write_u32(quantize(r.pos.y));
+            h.write_u32(quantize(r.vel.x));
+            h.write_u32(quantize(r.vel.y));
+        }
+        h.finish()
     }
 }
 

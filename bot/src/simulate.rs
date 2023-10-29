@@ -20,7 +20,7 @@ pub struct GameState {
     next_id: u32,
     pub meteors: Vec<Meteor>,
     pub rockets: Vec<Rocket>,
-    cooldown: u8,
+    pub cooldown: u8,
     pub score: u16,
 }
 
@@ -316,6 +316,23 @@ impl GameState {
             print!("Y={:3}|", i as f64 * UNITS_PER_SQUARE_Y);
             println!("{}|", row.join(""));
         }
+    }
+
+    pub fn is_equivalent(&self, other: &Self, precision: f64) -> bool {
+        self.tick == other.tick && self.next_id == other.next_id &&
+            self.cooldown == other.cooldown && self.score == other.score &&
+            self.meteors.len() == other.meteors.len() &&
+            self.rockets.len() == other.rockets.len() &&
+            std::iter::zip(self.meteors.iter(), other.meteors.iter()).all(|(a, b)| {
+                a.id == b.id && a.typ == b.typ &&
+                    a.pos.within_range(&b.pos, precision) &&
+                    a.vel.within_range(&b.vel, precision)
+            }) &&
+            std::iter::zip(self.rockets.iter(), other.rockets.iter()).all(|(a, b)| {
+                a.id == b.id && a.pos.within_range(&b.pos, precision) &&
+                    a.vel.within_range(&b.vel, precision)
+            })
+            
     }
 }
 
