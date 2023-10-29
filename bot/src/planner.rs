@@ -332,13 +332,15 @@ impl SearchState for SearcherState<'_> {
     fn transposition_hash(&self) -> u64 {
         // Note that we only hash things that meaningfully distinguish states.
         // If two states have the same board state (ignoring ids), the same
-        // score, and the same rng state, we consider them equivalent.
+        // score, and the same rng state, the same cooldown, we consider them
+        // equivalent.
         let quantize = |f: f64| (f as f32).to_bits();
         let cmp_pos = |a: &Vec2, b: &Vec2| {
             if a.x == b.x { a.y.partial_cmp(&b.y).unwrap() }
             else { a.x.partial_cmp(&b.y).unwrap() }
         };
         let mut h = FxHasher::default();
+        h.write_u8(self.state.cooldown);
         h.write_u16(self.state.score);
         h.write_usize(self.random_state);
         let mut meteor_indices: Vec<usize> = (0..self.state.meteors.len()).collect();
