@@ -181,6 +181,7 @@ impl<'a> SearcherState<'a> {
     }
 
     fn run_one_tick(&mut self) {
+        let before_state = self.random.borrow().save_state();
         self.random.borrow_mut().restore_state(self.random_state);
         for event in run_server_tick(
             &mut self.state, &mut self.random.borrow_mut(), self.constants) {
@@ -189,6 +190,7 @@ impl<'a> SearcherState<'a> {
             }
         }
         self.random_state = self.random.borrow().save_state();
+        self.random.borrow_mut().restore_state(before_state);
     }
 
     fn generate_shoot_actions(&self) -> Vec<Action> {
