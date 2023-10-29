@@ -1,7 +1,9 @@
 // Search specific to performing Monte Carlo Tree Search (MCTS).
-use crate::search::SearchState;
+use std::collections::HashSet;
 
 use rand::seq::SliceRandom;
+
+use crate::search::SearchState;
 
 struct Child<S: SearchState> {
     node_idx: usize,
@@ -14,6 +16,8 @@ struct Node<S: SearchState> {
     children: Option<Vec<Child<S>>>,
     sum_scores: u64,
     num_sims: u64,
+    skipped: bool,
+    // TODO: keep min/max scores, used in UCT
 }
 
 impl<S: SearchState> Node<S> {
@@ -22,7 +26,8 @@ impl<S: SearchState> Node<S> {
             children: None,
             next_unseen_child_idx: 0,
             sum_scores: 0,
-            num_sims: 0
+            num_sims: 0,
+            skipped: false,
         }
     }
 
@@ -45,6 +50,7 @@ impl<S: SearchState> Node<S> {
     }
 
     fn uct(&self, parent_sims: u64, max_score: u64) -> f64 {
+        if self.skipped { return 0.0; }
         assert!(self.num_sims > 0);
         // TODO try single player MCTS UCT?
         // https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
@@ -66,7 +72,8 @@ pub struct MCTS<S: SearchState> {
     max_score: u64,
     best_seen_score: u64,
     rounds: usize,
-    // TODO: take advantage of transposition hashes?
+    seen_hashes: HashSet<u64>,
+    skipped_rounds: usize,  // rounds we skipped thanks to hashes
 }
 
 impl<S: SearchState + Clone> MCTS<S> {
@@ -80,6 +87,8 @@ impl<S: SearchState + Clone> MCTS<S> {
             max_score: theoretical_max.into(),
             best_seen_score: 0,
             rounds: 0,
+            skipped_rounds: 0,
+            seen_hashes: HashSet::new(),
         }
     }
 
@@ -90,14 +99,20 @@ impl<S: SearchState + Clone> MCTS<S> {
     pub fn run_round(&mut self) {
         let mut state = self.start_state.clone();
         let (mut path, leaf_idx) = self.select_node(&mut state);
-        self.expand_node(&mut state, leaf_idx, &mut path);
+        let node_idx = self.expand_node(&mut state, leaf_idx, &mut path);
+        self.rounds += 1;
+        if !self.seen_hashes.insert(state.transposition_hash()) {
+            self.skipped_rounds += 1;
+            self.nodes[node_idx].skipped = true;
+            return;  // Already played out this state -- skip it
+        }
         self.playout(&mut state);
         let score = state.evaluate();
         self.backprop(score, &path);
-        self.rounds += 1;
         // TODO verbose setting
         if score > self.best_seen_score {
-            println!("Score: {} ({} rounds)", score, self.rounds);
+            println!("Score: {} ({} rounds ({} skipped))", score, self.rounds,
+                     self.skipped_rounds);
             self.best_seen_score = score;
         }
     }
