@@ -67,7 +67,7 @@ impl Planner {
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, random.clone());
         let mut mcts = MCTS::new(search_state);
-        for _ in 0..1000 {  // TODO make configurable
+        for _ in 0..5000 {  // TODO make configurable
             mcts.run_round();
         }
 
@@ -234,14 +234,9 @@ impl SearchState for SearcherState<'_> {
         if self.state.cannon_ready() {
             // TODO: consider holding when we can shoot?
             let shoot_actions = self.generate_shoot_actions();
-            if !shoot_actions.is_empty() {
-                actions.extend(shoot_actions);
-            } else {
-                actions.push(self.generate_hold_action());
-            }
-        } else {
-            actions.push(self.generate_hold_action());
+            actions.extend(shoot_actions);
         }
+        actions.push(self.generate_hold_action());
         actions
     }
 
