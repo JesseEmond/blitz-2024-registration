@@ -1,3 +1,4 @@
+// TODO: refactor to be only about SearchState
 use std::collections::HashSet;
 use std::hash::Hasher;
 
@@ -5,7 +6,7 @@ use rustc_hash::FxHasher;
 
 use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
-// use crate::mcts::MCTS;
+use crate::mcts::MCTS;
 use crate::physics::{aim_ahead, MovingCircle};
 use crate::search::SearchState;
 use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
@@ -61,13 +62,14 @@ impl Planner {
         mut random: GameRandom) -> Plan {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
-        // let search_state = SearcherState::new(
-        //     state.clone(), constants, cannon, random.clone());
-        // TODO: why is mcts root's rollout not matching the greedy output?
-        // let mut mcts = MCTS::new(search_state);
-        // for _ in 0..1000 {  // TODO make configurable
-        //     mcts.run_round();
-        // }
+
+
+        let search_state = SearcherState::new(
+            state.clone(), constants, cannon, random.clone());
+        let mut mcts = MCTS::new(search_state);
+        for _ in 0..1000 {  // TODO make configurable
+            mcts.run_round();
+        }
 
         let mut greedy = SearcherState::new(
             state.clone(), constants, cannon, random.clone());
@@ -473,5 +475,3 @@ fn spawn_delta_t(vision: &MeteorVision, current_tick: u16) -> u16 {
         0
     }
 }
-
-// TODO test searchstate isolates random state

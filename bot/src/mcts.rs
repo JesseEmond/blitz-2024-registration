@@ -1,8 +1,6 @@
 // Search specific to performing Monte Carlo Tree Search (MCTS).
 use std::collections::HashSet;
 
-use rand::seq::SliceRandom;
-
 use crate::search::SearchState;
 
 struct Child<S: SearchState> {
@@ -12,8 +10,8 @@ struct Child<S: SearchState> {
 }
 
 struct Node<S: SearchState> {
-    next_unseen_child_idx: usize,
     children: Option<Vec<Child<S>>>,
+    fully_expanded: bool,
     sum_scores: u64,
     num_sims: u64,
     skipped: bool,
@@ -24,7 +22,7 @@ impl<S: SearchState> Node<S> {
     fn new() -> Self {
         Self {
             children: None,
-            next_unseen_child_idx: 0,
+            fully_expanded: false,
             sum_scores: 0,
             num_sims: 0,
             skipped: false,
@@ -33,11 +31,6 @@ impl<S: SearchState> Node<S> {
 
     fn generate(&mut self, children: Vec<Child<S>>) {
         self.children = Some(children);
-    }
-
-    fn is_expanded(&self) -> bool {
-        self.is_generated() &&
-            self.next_unseen_child_idx == self.children.as_ref().unwrap().len()
     }
 
     fn is_generated(&self) -> bool {
@@ -77,7 +70,8 @@ pub struct MCTS<S: SearchState> {
     best_path: Path,
 }
 
-impl<S: SearchState + Clone> MCTS<S> {
+impl<S: SearchState + Clone> MCTS<S>
+where S::Action: Clone {
     pub fn new(start_state: S) -> Self {
         let root = Node::new();
         let theoretical_max = start_state.theoretical_max();
@@ -135,7 +129,7 @@ impl<S: SearchState + Clone> MCTS<S> {
     fn select_node(&self, state: &mut S) -> (Path, usize) {
         let mut node_idx = self.root_idx();
         let mut path = Path::new();
-        while self.nodes[node_idx].is_expanded() {
+        while self.nodes[node_idx].fully_expanded {
             let child_idx = self.best_uct(node_idx);
             path.push(child_idx);
             let child = &self.nodes[node_idx].children.as_ref().unwrap()[child_idx];
@@ -145,20 +139,34 @@ impl<S: SearchState + Clone> MCTS<S> {
         (path, node_idx)
     }
 
-    fn expand_node(&mut self, state: &mut S, node_idx: usize, path: &mut Path) -> usize {
-        assert!(!self.nodes[node_idx].is_expanded());
+    fn expand_node(&mut self, state: &mut S, node_idx: usize, path: &mut Path) -> usize
+    where S::Action: Clone {
+        assert!(!self.nodes[node_idx].fully_expanded);
         if state.is_final() {
             return node_idx;  // Nothing to expand.
         }
         if !self.nodes[node_idx].is_generated() {
             self.generate_node(state, node_idx);
         }
-        let child_idx = self.nodes[node_idx].next_unseen_child_idx;
-        self.nodes[node_idx].next_unseen_child_idx += 1;
+        let unexpanded: Vec<usize> = (0..self.nodes[node_idx].children.as_ref().unwrap().len())
+            .filter(|&i| {
+                let child = &self.nodes[node_idx].children.as_ref().unwrap()[i];
+                !self.nodes[child.node_idx].is_generated()
+            }).collect();
+        let unexpanded_actions = unexpanded.iter()
+            .map(|&i| self.nodes[node_idx].children.as_ref().unwrap()[i].action.clone())
+            .collect();
+        let unexpanded_idx = state.greedy_pick_action(&unexpanded_actions);
+        let child_idx = unexpanded[unexpanded_idx];
         path.push(child_idx);
         let child = &self.nodes[node_idx].children.as_ref().unwrap()[child_idx];
         state.apply_action(&child.action);
-        child.node_idx
+        let child_node_idx = child.node_idx;
+        self.generate_node(state, child_node_idx);
+        if unexpanded.len() == 1 {  // that was the last remaining one
+            self.nodes[node_idx].fully_expanded = true;
+        }
+        child_node_idx
     }
 
     /// Generates the possible children for a give node.
@@ -176,13 +184,12 @@ impl<S: SearchState + Clone> MCTS<S> {
     }
 
     fn playout(&mut self, state: &mut S) {
-        // TODO: smarter playout? (with some probability?)
         while !state.is_final() {
             let actions = state.generate_actions();
-            // TODO: if doing random pick, use this instead
-            let pick_idx = *(0..actions.len()).collect::<Vec<usize>>()
-                .choose(&mut rand::thread_rng()).unwrap();
-            // let pick_idx = state.greedy_pick_action(&actions);
+            // TODO: to do random playout, use this instead
+            // let pick_idx = *(0..actions.len()).collect::<Vec<usize>>()
+            //     .choose(&mut rand::thread_rng()).unwrap();
+            let pick_idx = state.greedy_pick_action(&actions);
             state.apply_action(&actions[pick_idx]);
         }
     }
