@@ -21,13 +21,6 @@ pub struct Event {
     pub info: EventInfo
 }
 
-struct Target {
-    aim: Vec2,
-    meteor_id: u32,
-    is_spawned: bool,
-    potential_score: u16,
-}
-
 #[derive(Clone)]
 struct MeteorVision {
     meteor: Meteor,
@@ -56,14 +49,11 @@ pub struct Plan {
 }
 
 pub struct Planner {
-    targeted: HashSet<u32>,
-    // IDs of future targets, must be incremented whenever we shoot.
-    future_ids: Vec<u32>,
 }
 
 impl Planner {
     pub fn new() -> Self {
-        Planner { targeted: HashSet::new(), future_ids: Vec::new(), }
+        Self {}
     }
 
     pub fn plan(
@@ -73,76 +63,35 @@ impl Planner {
         let mut events = Vec::new();
         // let search_state = SearcherState::new(
         //     state.clone(), constants, cannon, random.clone());
+        // TODO: why is mcts root's rollout not matching the greedy output?
         // let mut mcts = MCTS::new(search_state);
         // for _ in 0..1000 {  // TODO make configurable
         //     mcts.run_round();
         // }
 
-        // TODO: replace planner logic with search state greedy only
+        let mut greedy = SearcherState::new(
+            state.clone(), constants, cannon, random.clone());
         while !state.is_done() {
             for event in run_server_tick(
                 &mut state, &mut random, constants) {
-                if let EventInfo::Hit { meteor, .. } = event {
-                    self.targeted.remove(&meteor);
-                }
                 events.push(Event {
                     tick: state.tick,
                     info: post_update_event_info(event)
                 });
             }
-
-            if state.is_done() {
-                break;
-            }
-
-            if !state.cannon_ready() {
-                continue;  // Can't shoot, nothing to do.
-            }
-
-            if let Some(target) = pick_target(&state, random.clone(),
-                                              &self.targeted, constants, cannon) {
-                self.targeted.insert(target.meteor_id);
-                // TODO: detect when a new target messes with earlier targets
-                // (e.g. hits earlier than another rocket, which changes rng
-                // order and makes the previous shot incorrectly predicted).
-                // See if we ever pick this as the best target (i.e. need to fix?)
-                if !target.is_spawned {
-                    self.future_ids.push(target.meteor_id);
-                }
-                let shoot_info = state.shoot(cannon, constants,
-                    &target.aim, target.meteor_id).unwrap();
-                events.push(Event { info: shoot_info, tick: state.tick });
-                let rocket_id = match shoot_info {
-                    EventInfo::Shoot { id, .. } => id,
-                    _ => panic!("Shoot returned non-shoot event: {:?}", shoot_info),
-                };
-                self.update_future_ids(rocket_id, &mut events);
+            if state.is_done() { break; }
+            let actions = greedy.generate_actions();
+            let pick_idx = greedy.greedy_pick_action(&actions);
+            greedy.apply_action(&actions[pick_idx]);
+            match actions[pick_idx] {
+                Action::Hold { .. } => {},
+                Action::Shoot { aim, target_id, .. } => events.push(Event {
+                    info: state.shoot(cannon, constants, &aim, target_id).unwrap(),
+                    tick: state.tick
+                }),
             }
         }
         Plan { events, score: state.score }
-    }
-
-    /// When shooting future spawns, we're predicting IDs. After shooting,
-    /// future IDs need to be incremented and updated in internal structures:
-    /// - in 'targeted' ids
-    /// - in previous recorded 'Shoot' events
-    fn update_future_ids(&mut self, shot_id: u32, events: &mut Vec<Event>) {
-        // IDs that are no longer in the 'future' can be forgotten about.
-        self.future_ids.retain(|&id| id >= shot_id);
-        // Previous 'Shoot' events that referred to a future ID must be updated.
-        for event in events.iter_mut() {
-            if let EventInfo::Shoot { ref mut target_id, .. } = event.info {
-                if self.future_ids.contains(&target_id) {
-                    *target_id += 1;
-                }
-            }
-        }
-        // 'targeted' IDs and 'future_ids' must be incremented.
-        for id in self.future_ids.iter() { self.targeted.remove(id); }
-        for id in self.future_ids.iter_mut() {
-            *id += 1;
-            self.targeted.insert(*id);
-        }
     }
 }
 
@@ -216,11 +165,11 @@ impl<'a> SearcherState<'a> {
                     state: self.state.clone(),
                     target: &meteor_vision,
                 };
-                if let Some(target) = shot.get_result(self.random.clone()) {
+                if let Some(score) = shot.get_result(self.random.clone()) {
                     actions.push(Action::Shoot {
                         aim, target_id: meteor_vision.meteor.id,
                         is_future_target: !meteor_vision.is_spawned(),
-                        potential_score: target.potential_score
+                        potential_score: score,
                     });
                 }
             }
@@ -387,20 +336,13 @@ struct TentativeShot<'a> {
 }
 
 impl TentativeShot <'_> {
-    pub fn get_result(&mut self, rng: GameRandom) -> Option<Target> {
-        let mut target = None;
+    pub fn get_result(&mut self, rng: GameRandom) -> Option<u16> {
         if let Some((rocket_id, meteor_id)) = self.shoot() {
             if self.look_for_hit(rocket_id, meteor_id, rng) {
-                target = Some(Target {
-                    aim: *self.aim,
-                    // Note we use the original ID, not the post-simulation one.
-                    meteor_id: self.target.meteor.id,
-                    is_spawned: self.target.is_spawned(),
-                    potential_score: self.state.score,
-                });
+                return Some(self.state.score);
             }
         }
-        target
+        None
     }
 
     /// Returns the (rocket_id, meteor_id) post-shot.
@@ -468,43 +410,6 @@ fn post_update_event_info(info: EventInfo) -> EventInfo {
         },
         _ => info,
     }
-}
-
-fn pick_target(state: &GameState, random: GameRandom,
-               avoid: &HashSet<u32>, constants: &Constants,
-               cannon: &Cannon) -> Option<Target> {
-    let existing: Vec<MeteorVision> = state.meteors.iter().cloned()
-        .map(|m| MeteorVision::past(m)).collect();
-    let upcoming = upcoming_spawns(state, random.clone(), cannon,
-                                   constants);
-    let mut best_target: Option<Target> = None;
-    for meteor_vision in existing.iter().chain(upcoming.iter()) {
-        if avoid.contains(&meteor_vision.meteor.id) {
-            continue;  // Already targetting it!
-        }
-        let target = MovingCircle {
-            pos: rewind_pos_for_physics(meteor_vision, state.tick),
-            vel: meteor_vision.meteor.vel,
-            size: constants.get_meteor_info(meteor_vision.meteor.typ).size,
-        };
-        let cannon_pos: Vec2 = cannon.position.into();
-        if let Some(aim) = aim_ahead(&cannon_pos, constants.rockets.speed, &target) {
-            let mut shot = TentativeShot {
-                aim: &aim,
-                cannon: &cannon,
-                constants: &constants,
-                state: state.clone(),
-                target: &meteor_vision,
-            };
-            if let Some(target) = shot.get_result(random.clone()) {
-                if best_target.as_ref().map(|t| target.potential_score > t.potential_score)
-                    .unwrap_or(true) {
-                    best_target = Some(target);
-                }
-            }
-        }
-    }
-    best_target
 }
 
 /// Finds meteors that will spawn (spawns or splits) in the near future (in the
