@@ -53,7 +53,7 @@ where S::Action: Clone {
         }
     }
 
-    pub fn step(&mut self, verbose: bool) -> Option<Vec<S::Action>> {
+    pub fn step(&mut self) -> Option<Vec<S::Action>> {
         assert!(!self.beam.is_empty(), "Beam empty! Game did not end?");
         let mut new_beam = Vec::new();
         let mut best_node: Option<Node<S>> = None;
@@ -94,9 +94,9 @@ where S::Action: Clone {
     }
 
     // Helper function to run a full search.
-    pub fn search(&mut self, verbose: bool) -> Vec<S::Action> {
+    pub fn search(&mut self) -> Vec<S::Action> {
         loop {
-            if let Some(actions) = self.step(verbose) {
+            if let Some(actions) = self.step() {
                 return actions;
             }
         }

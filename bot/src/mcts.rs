@@ -172,7 +172,7 @@ impl<S: SearchState + Clone> MCTS<S> {
             children.push(Child { node_idx: new_idx, action });
         }
         assert!(!children.is_empty(), "No action possible for node_idx: {}", node_idx);
-        self.nodes[node_idx].children = Some(children);
+        self.nodes[node_idx].generate(children);
     }
 
     fn playout(&mut self, state: &mut S) {
@@ -180,9 +180,9 @@ impl<S: SearchState + Clone> MCTS<S> {
         while !state.is_final() {
             let actions = state.generate_actions();
             // TODO: if doing random pick, use this instead
-            // let pick_idx = *(0..actions.len()).collect::<Vec<usize>>()
-            //     .choose(&mut rand::thread_rng()).unwrap();
-            let pick_idx = state.greedy_pick_action(&actions);
+            let pick_idx = *(0..actions.len()).collect::<Vec<usize>>()
+                .choose(&mut rand::thread_rng()).unwrap();
+            // let pick_idx = state.greedy_pick_action(&actions);
             state.apply_action(&actions[pick_idx]);
         }
     }

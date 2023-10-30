@@ -61,18 +61,19 @@ struct Collision {
     t: f64,
 }
 
-pub struct ExpectedHit {
-    /// Already-shot rocket that we want to check.
-    pub rocket_id: u32,
-    /// Meteor ID that we expect to hit.
-    /// Note that this should be the ID after our rocket is generated (i.e. +1).
-    pub meteor_id: u32,
-}
+// TODO: WIP
+// pub struct ExpectedHit {
+//     /// Already-shot rocket that we want to check.
+//     pub rocket_id: u32,
+//     /// Meteor ID that we expect to hit.
+//     /// Note that this should be the ID after our rocket is generated (i.e. +1).
+//     pub meteor_id: u32,
+// }
 
-pub struct SimulationResult {
-    pub score: u16,
-    pub did_hit: bool,
-}
+// pub struct SimulationResult {
+//     pub score: u16,
+//     pub did_hit: bool,
+// }
 
 /// Runs a single game tick like the server would.
 pub fn run_server_tick(state: &mut GameState, rng: &mut GameRandom,
@@ -80,13 +81,14 @@ pub fn run_server_tick(state: &mut GameState, rng: &mut GameRandom,
     ServerSimulation { state, rng, constants }.tick()
 }
 
-/// Quickly simulates 'state' until rockets hit or miss, optionally checking for
-/// an expected hit.
-pub fn resolve_state(state: &GameState, rng: &mut GameRandom,
-                       constants: &Constants,
-                       hit: Option<ExpectedHit>) -> SimulationResult {
-    todo!("query");
-}
+// TODO: WIP
+// /// Quickly simulates 'state' until rockets hit or miss, optionally checking for
+// /// an expected hit.
+// pub fn resolve_state(state: &GameState, rng: &mut GameRandom,
+//                        constants: &Constants,
+//                        hit: Option<ExpectedHit>) -> SimulationResult {
+//     todo!("query");
+// }
 
 struct ServerSimulation<'a> {
     state: &'a mut GameState,
@@ -275,8 +277,7 @@ impl GameState {
     pub fn potential_score(&self, cannon: &Cannon, constants: &Constants) -> u16 {
         let board_score: u16 = self.meteors.iter()
             // Ignore meteors that we can't ever hit
-            // TODO: re-include once we verify it helps
-            // .filter(|&m| m.pos.x + constants.get_meteor_info(m.typ).size >= cannon.position.x)
+            .filter(|&m| m.pos.x + constants.get_meteor_info(m.typ).size >= cannon.position.x)
             .map(|m| total_score(m.typ, constants)).sum();
         let large_score = total_score(MeteorType::Large, constants);
         let potential_score = large_score * remaining_spawns(self.tick) as u16;

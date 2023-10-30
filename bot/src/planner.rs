@@ -1,13 +1,11 @@
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::hash::Hasher;
-use std::rc::Rc;
 
 use rustc_hash::FxHasher;
 
 use crate::game_message::{Cannon, Constants};
 use crate::game_random::GameRandom;
-use crate::mcts::MCTS;
+// use crate::mcts::MCTS;
 use crate::physics::{aim_ahead, MovingCircle};
 use crate::search::SearchState;
 use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
@@ -70,18 +68,20 @@ impl Planner {
 
     pub fn plan(
         &mut self, cannon: &Cannon, constants: &Constants, first_id: u32,
-        random: Rc<RefCell<GameRandom>>) -> Plan {
+        mut random: GameRandom) -> Plan {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
-        let search_state = SearcherState::new(
-            state.clone(), constants, cannon, Rc::clone(&random));
+        // let search_state = SearcherState::new(
+        //     state.clone(), constants, cannon, random.clone());
         // let mut mcts = MCTS::new(search_state);
         // for _ in 0..1000 {  // TODO make configurable
         //     mcts.run_round();
         // }
+
+        // TODO: replace planner logic with search state greedy only
         while !state.is_done() {
             for event in run_server_tick(
-                &mut state, &mut random.borrow_mut(), constants) {
+                &mut state, &mut random, constants) {
                 if let EventInfo::Hit { meteor, .. } = event {
                     self.targeted.remove(&meteor);
                 }
@@ -90,12 +90,16 @@ impl Planner {
                     info: post_update_event_info(event)
                 });
             }
-            
+
+            if state.is_done() {
+                break;
+            }
+
             if !state.cannon_ready() {
                 continue;  // Can't shoot, nothing to do.
             }
 
-            if let Some(target) = pick_target(&state, &mut random.borrow_mut(),
+            if let Some(target) = pick_target(&state, random.clone(),
                                               &self.targeted, constants, cannon) {
                 self.targeted.insert(target.meteor_id);
                 // TODO: detect when a new target messes with earlier targets
@@ -142,7 +146,7 @@ impl Planner {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Shoot { aim: Vec2, target_id: u32, is_future_target: bool, potential_score: u16 },
     Hold { potential_score: u16, },
@@ -156,14 +160,13 @@ pub struct SearcherState<'a> {
     targeted: HashSet<u32>,
     // IDs of future targets, must be incremented whenever we shoot.
     future_ids: Vec<u32>,
-    random: Rc<RefCell<GameRandom>>,
-    random_state: usize,
+    random: GameRandom,
     potential_score: u16,
 }
 
 impl<'a> SearcherState<'a> {
     pub fn new(state: GameState, constants: &'a Constants, cannon: &'a Cannon,
-           random: Rc<RefCell<GameRandom>>) -> Self {
+               random: GameRandom) -> Self {
         let potential_score = state.potential_score(cannon, constants);
         let mut searcher_state = Self {
             state,
@@ -171,8 +174,7 @@ impl<'a> SearcherState<'a> {
             cannon,
             targeted: HashSet::new(),
             future_ids: Vec::new(),
-            random: Rc::clone(&random),
-            random_state: random.borrow().save_state(),
+            random,
             potential_score,
         };
         // Before we make our first action, the server runs a tick.
@@ -181,24 +183,21 @@ impl<'a> SearcherState<'a> {
     }
 
     fn run_one_tick(&mut self) {
-        let before_state = self.random.borrow().save_state();
-        self.random.borrow_mut().restore_state(self.random_state);
         for event in run_server_tick(
-            &mut self.state, &mut self.random.borrow_mut(), self.constants) {
+            &mut self.state, &mut self.random, self.constants) {
             if let EventInfo::Hit { meteor, .. } = event {
                 self.targeted.remove(&meteor);
             }
         }
-        self.random_state = self.random.borrow().save_state();
-        self.random.borrow_mut().restore_state(before_state);
     }
 
     fn generate_shoot_actions(&self) -> Vec<Action> {
         let mut actions = Vec::new();
         let existing: Vec<MeteorVision> = self.state.meteors.iter().cloned()
             .map(|m| MeteorVision::past(m)).collect();
-        let upcoming = upcoming_spawns(&self.state, &mut self.random.borrow_mut(),
+        let upcoming = upcoming_spawns(&self.state, self.random.clone(),
                                        self.cannon, self.constants);
+
         for meteor_vision in existing.iter().chain(upcoming.iter()) {
             if self.targeted.contains(&meteor_vision.meteor.id) {
                 continue;  // Already targetting it!
@@ -217,7 +216,7 @@ impl<'a> SearcherState<'a> {
                     state: self.state.clone(),
                     target: &meteor_vision,
                 };
-                if let Some(target) = shot.get_result(&mut self.random.borrow_mut()) {
+                if let Some(target) = shot.get_result(self.random.clone()) {
                     actions.push(Action::Shoot {
                         aim, target_id: meteor_vision.meteor.id,
                         is_future_target: !meteor_vision.is_spawned(),
@@ -231,14 +230,13 @@ impl<'a> SearcherState<'a> {
 
     fn generate_hold_action(&self) -> Action {
         let mut state = self.state.clone();
-        let rng_state = self.random.borrow().save_state();
+        let mut random = self.random.clone();
         while !state.is_done() {
             if state.rockets.is_empty() {
                 break;
             }
-            run_server_tick(&mut state, &mut self.random.borrow_mut(), self.constants);
+            run_server_tick(&mut state, &mut random, self.constants);
         }
-        self.random.borrow_mut().restore_state(rng_state);
         Action::Hold { potential_score: state.score }
     }
 
@@ -323,10 +321,10 @@ impl SearchState for SearcherState<'_> {
 
     fn greedy_pick_action(&self, actions: &Vec<Action>) -> usize {
         actions.iter().enumerate()
-            .max_by_key(|(_, a)| match a {
+            .max_by_key(|(idx, a)| (match a {
                 Action::Shoot { potential_score, .. } => potential_score,
                 Action::Hold { potential_score } => potential_score,
-            })
+            }, actions.len() - idx))  // prioritize earlier actions
             .map(|(idx, _)| idx).unwrap()
     }
 
@@ -336,7 +334,7 @@ impl SearchState for SearcherState<'_> {
         // what we're aiming at, if those are the same, then the game will
         // develop in the same way.
         self.potential_score == other.potential_score &&
-            self.random_state == other.random_state &&
+            self.random.state() == other.random.state() &&
             self.state.is_equivalent(&other.state, 1e-7)
     }
 
@@ -353,7 +351,7 @@ impl SearchState for SearcherState<'_> {
         let mut h = FxHasher::default();
         h.write_u8(self.state.cooldown);
         h.write_u16(self.state.score);
-        h.write_usize(self.random_state);
+        h.write_usize(self.random.state());
         let mut meteor_indices: Vec<usize> = (0..self.state.meteors.len()).collect();
         meteor_indices.sort_by(|&i, &j| cmp_pos(
                 &self.state.meteors[i].pos, &self.state.meteors[j].pos));
@@ -389,8 +387,7 @@ struct TentativeShot<'a> {
 }
 
 impl TentativeShot <'_> {
-    pub fn get_result(&mut self, rng: &mut GameRandom) -> Option<Target> {
-        let rng_state = rng.save_state();
+    pub fn get_result(&mut self, rng: GameRandom) -> Option<Target> {
         let mut target = None;
         if let Some((rocket_id, meteor_id)) = self.shoot() {
             if self.look_for_hit(rocket_id, meteor_id, rng) {
@@ -403,7 +400,6 @@ impl TentativeShot <'_> {
                 });
             }
         }
-        rng.restore_state(rng_state);
         target
     }
 
@@ -428,7 +424,7 @@ impl TentativeShot <'_> {
     /// Simulates and checks for a specific rocket-meteor hit.
     /// Returns false if the rocket would hit something else/miss.
     fn look_for_hit(&mut self, rocket_id: u32, meteor_id: u32,
-                    rng: &mut GameRandom) -> bool {
+                    mut rng: GameRandom) -> bool {
         let mut hit = false;
         // Note that we don't early exit here, we sim the full requested amount
         // if possible -- callers want the full post-sim potential score
@@ -437,7 +433,7 @@ impl TentativeShot <'_> {
                 // No more rockets moving, state is resolved.
                 return hit;
             }
-            for event in run_server_tick(&mut self.state, rng, self.constants) {
+            for event in run_server_tick(&mut self.state, &mut rng, self.constants) {
                 match event {
                     EventInfo::Hit { meteor, rocket } => {
                         if rocket == rocket_id && meteor == meteor_id {
@@ -474,14 +470,13 @@ fn post_update_event_info(info: EventInfo) -> EventInfo {
     }
 }
 
-fn pick_target(state: &GameState, random: &mut GameRandom,
+fn pick_target(state: &GameState, random: GameRandom,
                avoid: &HashSet<u32>, constants: &Constants,
                cannon: &Cannon) -> Option<Target> {
     let existing: Vec<MeteorVision> = state.meteors.iter().cloned()
         .map(|m| MeteorVision::past(m)).collect();
-    let upcoming = upcoming_spawns(state, random, cannon,
+    let upcoming = upcoming_spawns(state, random.clone(), cannon,
                                    constants);
-    let sim_ticks = max_rocket_lifespan(constants, cannon);
     let mut best_target: Option<Target> = None;
     for meteor_vision in existing.iter().chain(upcoming.iter()) {
         if avoid.contains(&meteor_vision.meteor.id) {
@@ -501,7 +496,7 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
                 state: state.clone(),
                 target: &meteor_vision,
             };
-            if let Some(target) = shot.get_result(random) {
+            if let Some(target) = shot.get_result(random.clone()) {
                 if best_target.as_ref().map(|t| target.potential_score > t.potential_score)
                     .unwrap_or(true) {
                     best_target = Some(target);
@@ -516,9 +511,8 @@ fn pick_target(state: &GameState, random: &mut GameRandom,
 /// max time that a rocket can travel).
 /// Note that future Meteor IDs returned need to be incremented anytime we shoot.
 fn upcoming_spawns(
-    state: &GameState, random: &mut GameRandom, cannon: &Cannon,
+    state: &GameState, mut random: GameRandom, cannon: &Cannon,
     constants: &Constants) -> Vec<MeteorVision> {
-    let rng_state = random.save_state();
     let mut state = state.clone();
     let mut spawns = Vec::new();
     for _ in 0..max_rocket_lifespan(constants, cannon) {
@@ -526,7 +520,7 @@ fn upcoming_spawns(
             break;
         }
         let event_tick = state.tick;
-        for event in run_server_tick(&mut state, random, constants) {
+        for event in run_server_tick(&mut state, &mut random, constants) {
             match event {
                 EventInfo::MeteorSpawn { id, pos, vel, typ } => {
                     spawns.push(MeteorVision::future(
@@ -540,7 +534,6 @@ fn upcoming_spawns(
             }
         }
     }
-    random.restore_state(rng_state);
     spawns
 }
 
@@ -575,3 +568,5 @@ fn spawn_delta_t(vision: &MeteorVision, current_tick: u16) -> u16 {
         0
     }
 }
+
+// TODO test searchstate isolates random state

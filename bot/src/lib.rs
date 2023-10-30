@@ -14,9 +14,6 @@ pub mod simulate;
 pub mod spawn_schedule;
 pub mod vec2;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 
@@ -25,7 +22,8 @@ use crate::game_random::GameRandom;
 use crate::planner::{Event, Planner};
 use crate::simulate::{EventInfo};
 
-#[pyclass]
+// TODO: consider reworking to make it sendable?
+#[pyclass(unsendable)]
 pub struct Nostradamus {
     game_first_tick: GameMessage,
     random: GameRandom,
@@ -50,7 +48,7 @@ impl Nostradamus {
             .parse().unwrap();
         let plan = planner.plan(
             &self.game_first_tick.cannon, &self.game_first_tick.constants,
-            first_id, Rc::new(RefCell::new(self.random.clone())));
+            first_id, self.random.clone());
         println!("Final score: {}", plan.score);
         plan.events.iter().map(|&e| PlanEvent(e)).collect()
     }

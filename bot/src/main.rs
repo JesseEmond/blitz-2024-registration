@@ -1,8 +1,6 @@
 /// Runs all the known seeds to get the best score for each.
 
-use std::cell::RefCell;
 use std::io::Write;
-use std::rc::Rc;
 use std::time::{Instant};
 
 use nostradamus::game_message::default_game_settings;
@@ -22,8 +20,7 @@ fn main() {
         let start = Instant::now();
         let random = GameRandom::new(SeedRandom::from_seed(seed));
         let mut planner = Planner::new();
-        let plan = planner.plan(&cannon, &constants, first_id,
-                                Rc::new(RefCell::new(random)));
+        let plan = planner.plan(&cannon, &constants, first_id, random);
         let duration = start.elapsed();
         println!("{} (took {:?})", plan.score, duration);
     }
