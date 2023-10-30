@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use nostradamus::game_message::default_game_settings;
@@ -15,10 +12,9 @@ fn beam_search_stardreamer() -> u64 {
     let rng = GameRandom::new(SeedRandom::from_seed(b"Stardreamer"));
     let (constants, cannon) = default_game_settings();
     let state = GameState::new(/*first_id=*/0);
-    let searcher_state = SearcherState::new(
-        state, &constants, &cannon, Rc::new(RefCell::new(rng)));
+    let searcher_state = SearcherState::new(state, &constants, &cannon, rng);
     let mut beam_search = BeamSearch::new(searcher_state);
-    beam_search.search(/*verbose=*/false);
+    beam_search.search();
     assert_eq!(beam_search.best_evaluation, 4695);
     beam_search.best_evaluation
 }

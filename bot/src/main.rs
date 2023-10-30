@@ -12,6 +12,7 @@ fn main() {
     let first_id = 0;
     let (constants, cannon) = default_game_settings();
     let longest_seed = OBSERVED_SEEDS.iter().map(|s| s.len()).max().unwrap();
+    // TODO: make single seed an arg optional
     for &seed in OBSERVED_SEEDS {
         print!("Seed {:0length$} = ",
                String::from_utf8(seed.iter().cloned().collect()).unwrap(),

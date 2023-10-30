@@ -66,7 +66,7 @@ pub struct MCTS<S: SearchState> {
     rounds: usize,
     seen_hashes: HashSet<u64>,
     skipped_rounds: usize,  // rounds we skipped thanks to hashes
-    best_seen_score: u64,
+    pub best_seen_score: u64,
     best_path: Path,
 }
 
