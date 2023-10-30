@@ -1,6 +1,7 @@
 // TODO: refactor to be only about SearchState
 use std::collections::HashSet;
 use std::hash::Hasher;
+use std::time::Duration;
 
 use rustc_hash::FxHasher;
 
@@ -67,9 +68,7 @@ impl Planner {
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, random.clone());
         let mut mcts = MCTS::new(search_state);
-        for _ in 0..10000 {  // TODO make configurable
-            mcts.run_round();
-        }
+        mcts.run_with_budget(Duration::from_secs(1));
 
         let mut greedy = SearcherState::new(
             state.clone(), constants, cannon, random.clone());

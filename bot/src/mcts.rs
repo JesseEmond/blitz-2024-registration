@@ -1,5 +1,6 @@
 // Search specific to performing Monte Carlo Tree Search (MCTS).
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use rand::Rng;
 use rand::prelude::SliceRandom;
@@ -72,6 +73,7 @@ type Path = Vec<usize>;
 
 pub struct MCTS<S: SearchState> {
     start_state: S,
+    root_idx: usize,
     nodes: Vec<Node<S>>,
     /// Max possible score, used to normalize scores for UCT.
     max_score: u64,
@@ -92,6 +94,7 @@ where S::Action: Clone {
             start_state,
             nodes: vec![root],
             max_score: theoretical_max.into(),
+            root_idx: 0,
             rounds: 0,
             skipped_rounds: 0,
             seen_hashes: HashSet::new(),
@@ -100,19 +103,16 @@ where S::Action: Clone {
         }
     }
 
-    fn root_idx(&self) -> usize {
-        0
-    }
-
-    pub fn best_actions_sequence(&self) -> Vec<&S::Action> {
-        let mut seq = Vec::new();
-        let mut node_idx = self.root_idx();
-        for &child_idx in &self.best_path {
-            let child = &self.nodes[node_idx].data().children[child_idx];
-            seq.push(&child.action);
-            node_idx = child.node_idx;
+    pub fn run_with_budget(&mut self, budget: Duration) {
+        let start = Instant::now();
+        let mut rounds = 0;
+        while start.elapsed() < budget {
+            self.run_round();
+            rounds += 1;
         }
-        seq
+        let duration = start.elapsed();
+        // TODO verbose setting
+        println!("Ran {} rounds in {:?}", rounds, duration);
     }
 
     pub fn run_round(&mut self) {
@@ -137,9 +137,20 @@ where S::Action: Clone {
         }
     }
 
+    pub fn best_actions_sequence(&self) -> Vec<&S::Action> {
+        let mut seq = Vec::new();
+        let mut node_idx = self.root_idx;
+        for &child_idx in &self.best_path {
+            let child = &self.nodes[node_idx].data().children[child_idx];
+            seq.push(&child.action);
+            node_idx = child.node_idx;
+        }
+        seq
+    }
+
     /// Selects (path, leaf_node_idx), using UCT.
     fn select_node(&self, state: &mut S) -> (Path, usize) {
-        let mut node_idx = self.root_idx();
+        let mut node_idx = self.root_idx;
         let mut path = Path::new();
         while self.nodes[node_idx].fully_expanded {
             let child_idx = self.best_uct(node_idx);
@@ -210,7 +221,7 @@ where S::Action: Clone {
     }
 
     fn backprop(&mut self, score: u64, path: &Path) {
-        let mut node_idx = self.root_idx();
+        let mut node_idx = self.root_idx;
         for &child_idx in path {
             self.nodes[node_idx].update_stats(/*sims=*/1, score);
             node_idx = self.nodes[node_idx].data().children[child_idx].node_idx;
