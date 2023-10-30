@@ -67,7 +67,7 @@ impl Planner {
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, random.clone());
         let mut mcts = MCTS::new(search_state);
-        for _ in 0..10000000 {  // TODO make configurable
+        for _ in 0..10000 {  // TODO make configurable
             mcts.run_round();
         }
 
@@ -266,6 +266,7 @@ impl SearchState for SearcherState<'_> {
     }
 
     fn greedy_pick_action(&self, actions: &Vec<Action>) -> usize {
+        // TODO: better heuristics?
         actions.iter().enumerate()
             .max_by_key(|(idx, a)| (match a {
                 Action::Shoot { potential_score, .. } => potential_score,
