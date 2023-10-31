@@ -135,15 +135,15 @@ where S::Action: Clone {
         self.backprop(score, &path);
     }
 
-    pub fn best_actions_sequence(&self) -> Vec<&S::Action> {
-        let mut seq = Vec::new();
+    pub fn best_actions_sequence(&self) -> Vec<S::Action> {
+        let mut actions = Vec::new();
         let mut node_idx = self.root_idx;
         for &child_idx in &self.best_path {
             let child = &self.nodes[node_idx].data().children[child_idx];
-            seq.push(&child.action);
+            actions.push(child.action.clone());
             node_idx = child.node_idx;
         }
-        seq
+        actions
     }
 
     /// Selects (path, leaf_node_idx), using UCT.

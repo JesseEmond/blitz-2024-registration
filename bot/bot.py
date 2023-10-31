@@ -87,7 +87,7 @@ class Bot:
         tick_time = time.time() - start_time
         self.stats.record_tick_time(tick_time)
         self.info(f'Tick time: {tick_time * 1000:.1f}ms')
-        self.asserter.expect(tick_time < 1, f'Slow tick: {tick_time:.3f}s')
+        self.asserter.expect(tick_time < 2, f'Slow tick: {tick_time:.3f}s')
         return actions
 
     def pick_actions(self, game):

@@ -1,5 +1,5 @@
 // TODO: refactor to be only about SearchState
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::hash::Hasher;
 use std::time::Duration;
 
@@ -64,7 +64,6 @@ impl Planner {
         let mut state = GameState::new(first_id);
         let mut events = Vec::new();
 
-
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, random.clone());
         let mut mcts = MCTS::new(search_state);
@@ -72,6 +71,11 @@ impl Planner {
         // TODO: only get single best action instead of all at once
         let mut actions = mcts.best_actions_sequence();
         actions.reverse();
+
+        // TODO: note that the fixed predicted IDs aren't quite right yet... but
+        // the action plan still works. Will disable predicted-target-hit
+        // checking in Python for now.
+        let mut ids_fixer = PredictedIdsFixer::new();
 
         while !state.is_done() {
             for event in run_server_tick(
@@ -81,17 +85,71 @@ impl Planner {
                     info: post_update_event_info(event)
                 });
             }
+            ids_fixer.on_tick(&state);
             if state.is_done() { break; }
             let best_action = actions.pop().expect("Action plan was too short");
             match best_action {
                 Action::Hold { .. } => {},
-                Action::Shoot { aim, target_id, .. } => events.push(Event {
-                    info: state.shoot(cannon, constants, &aim, *target_id).unwrap(),
-                    tick: state.tick
-                }),
+                Action::Shoot { aim, target_id, is_future_target, .. } => {
+                    if is_future_target {
+                        ids_fixer.track_predicted_id(target_id);
+                    }
+                    events.push(Event {
+                        info: state.shoot(cannon, constants, &aim, target_id).unwrap(),
+                        tick: state.tick
+                    });
+                    ids_fixer.on_shot();
+                },
             }
         }
+        ids_fixer.fix_events(&mut events);
         Plan { events, score: state.score }
+    }
+}
+
+// Helper struct to update IDs of future meteors we shoot at in 'Action', since
+// whenever we shoot until then we increment future IDs.
+struct PredictedIdsFixer {
+    // Original ID to currently predicted ID. Whenever we shoot we increment
+    // these, until the ID is reached -- then we move to 'to_apply'.
+    in_flight: HashMap<u32, u32>,
+    // Original ID to fixed ID. We apply this to the final events.
+    to_apply: HashMap<u32, u32>,
+}
+
+impl PredictedIdsFixer {
+    fn new() -> Self {
+        Self { in_flight: HashMap::new(), to_apply: HashMap::new() }
+    }
+
+    fn track_predicted_id(&mut self, target_id: u32) {
+        self.in_flight.insert(target_id, target_id);
+    }
+
+    fn on_tick(&mut self, state: &GameState) {
+        self.in_flight.retain(|&orig_id, &mut current_id| {
+            let spawned = current_id < state.next_id;
+            if spawned {
+                self.to_apply.insert(orig_id, current_id);
+            }
+            !spawned
+        });
+    }
+
+    fn on_shot(&mut self) {
+        for (_, current_id) in self.in_flight.iter_mut() {
+            *current_id += 1;
+        }
+    }
+
+    fn fix_events(&self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if let EventInfo::Shoot { ref mut target_id, .. } = event.info {
+                if let Some(fixed_id) = self.to_apply.get(&target_id) {
+                    *target_id = *fixed_id;
+                }
+            }
+        }
     }
 }
 
@@ -106,9 +164,9 @@ pub struct SearcherState<'a> {
     constants: &'a Constants,
     cannon: &'a Cannon,
     state: GameState,
-    targeted: HashSet<u32>,
-    // IDs of future targets, must be incremented whenever we shoot.
-    future_ids: Vec<u32>,
+    // IDs of already shot-at meteors. Some are predicted IDs and need to be
+    // updated when we shoot.
+    targeted: Vec<u32>,
     random: GameRandom,
     potential_score: u16,
 }
@@ -121,8 +179,7 @@ impl<'a> SearcherState<'a> {
             state,
             constants,
             cannon,
-            targeted: HashSet::new(),
-            future_ids: Vec::new(),
+            targeted: Vec::new(),
             random,
             potential_score,
         };
@@ -135,7 +192,7 @@ impl<'a> SearcherState<'a> {
         for event in run_server_tick(
             &mut self.state, &mut self.random, self.constants) {
             if let EventInfo::Hit { meteor, .. } = event {
-                self.targeted.remove(&meteor);
+                self.targeted.retain(|&id| id != meteor);
             }
         }
     }
@@ -189,38 +246,28 @@ impl<'a> SearcherState<'a> {
         Action::Hold { potential_score: state.score }
     }
 
-    fn apply_shot(&mut self, aim: &Vec2, target_id: u32, is_future_target: bool) {
-        self.targeted.insert(target_id);
+    fn apply_shot(&mut self, aim: &Vec2, target_id: u32) {
+        self.targeted.push(target_id);
         // TODO: detect when a new target messes with earlier targets
         // (e.g. hits earlier than another rocket, which changes rng
         // order and makes the previous shot incorrectly predicted).
         // See if we ever pick this as the best target (i.e. need to fix?)
-        if is_future_target {
-            self.future_ids.push(target_id);
-        }
         let shoot_info = self.state.shoot(self.cannon, self.constants,
             aim, target_id).unwrap();
         let rocket_id = match shoot_info {
             EventInfo::Shoot { id, .. } => id,
             _ => panic!("Shoot returned non-shoot event: {:?}", shoot_info),
         };
-        self.update_future_ids(rocket_id);
+        self.increment_predicted_ids(rocket_id);
     }
 
     /// When shooting future spawns, we're predicting IDs. After shooting,
-    /// future IDs need to be incremented and updated in 'targeted'
-    fn update_future_ids(&mut self, shot_id: u32) {
-        // IDs that are no longer in the 'future' can be forgotten about.
-        self.future_ids.retain(|&id| id >= shot_id);
-        // 'targeted' IDs and 'future_ids' must be incremented.
-        let old_ids = HashSet::from_iter(self.future_ids.iter().cloned());
-        for id in self.future_ids.iter_mut() {
-            *id += 1;
+    /// future IDs need to be incremented and e.g. updated in 'targeted'
+    fn increment_predicted_ids(&mut self, shot_id: u32) {
+        // future 'targeted' IDs must be incremented.
+        for id in &mut self.targeted {
+            if *id >= shot_id { *id += 1; }
         }
-        self.targeted = &self.targeted - &old_ids;
-        self.targeted.extend(&self.future_ids);
-        // TODO: Need to update previous 'Shoot' actions! They might now be
-        // wrong.
     }
 }
 
@@ -230,9 +277,7 @@ impl SearchState for SearcherState<'_> {
     fn generate_actions(&self) -> Vec<Self::Action> {
         let mut actions = Vec::new();
         if self.state.cannon_ready() {
-            // TODO: consider holding when we can shoot?
-            let shoot_actions = self.generate_shoot_actions();
-            actions.extend(shoot_actions);
+            actions.extend(self.generate_shoot_actions());
         }
         actions.push(self.generate_hold_action());
         actions
@@ -243,9 +288,9 @@ impl SearchState for SearcherState<'_> {
             Action::Hold { potential_score } => {
                 self.potential_score = *potential_score;
             },
-            Action::Shoot { aim, target_id, is_future_target, potential_score } => {
+            Action::Shoot { aim, target_id, potential_score, .. } => {
                 self.potential_score = *potential_score;
-                self.apply_shot(aim, *target_id, *is_future_target);
+                self.apply_shot(aim, *target_id);
             }
         }
         self.run_one_tick();

@@ -17,7 +17,7 @@ pub enum EventInfo {
 #[derive(Clone)]
 pub struct GameState {
     pub tick: u16,
-    next_id: u32,
+    pub next_id: u32,
     pub meteors: Vec<Meteor>,
     pub rockets: Vec<Rocket>,
     pub cooldown: u8,
