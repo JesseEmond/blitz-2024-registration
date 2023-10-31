@@ -11,6 +11,7 @@ struct Child<S: SearchState> {
     node_idx: usize,
     /// Action taken to get to this child.
     action: S::Action,
+    expanded: bool,
 }
 
 struct NodeData<S: SearchState> {
@@ -48,6 +49,11 @@ impl<S: SearchState> Node<S> {
     fn data(&self) -> &NodeData<S> {
         assert!(self.is_generated());
         self.data.as_ref().unwrap()
+    }
+
+    fn data_mut(&mut self) -> &mut NodeData<S> {
+        assert!(self.is_generated());
+        self.data.as_mut().unwrap()
     }
 
     fn update_stats(&mut self, sims: u64, sum_scores: u64) {
@@ -125,16 +131,8 @@ where S::Action: Clone {
             self.nodes[node_idx].skipped = true;
             return;  // Already played out this state -- skip it
         }
-        self.playout(&mut state);
-        let score = state.evaluate();
+        let score = self.playout(&mut state, node_idx, &path);
         self.backprop(score, &path);
-        // TODO verbose setting
-        if score > self.best_seen_score {
-            println!("Score: {} ({} rounds ({} skipped))", score, self.rounds,
-                     self.skipped_rounds);
-            self.best_seen_score = score;
-            self.best_path = path.clone();
-        }
     }
 
     pub fn best_actions_sequence(&self) -> Vec<&S::Action> {
@@ -174,18 +172,18 @@ where S::Action: Clone {
         let unexpanded: Vec<usize> = (0..self.nodes[node_idx].data().children.len())
             .filter(|&i| {
                 let child = &self.nodes[node_idx].data().children[i];
-                !self.nodes[child.node_idx].is_generated()
+                !child.expanded
             }).collect();
         let unexpanded_actions = unexpanded.iter()
-            .map(|&i| self.nodes[node_idx].data().children[i].action.clone())
+            .map(|&i| &self.nodes[node_idx].data().children[i].action)
             .collect();
         let unexpanded_idx = state.greedy_pick_action(&unexpanded_actions);
         let child_idx = unexpanded[unexpanded_idx];
         path.push(child_idx);
-        let child = &self.nodes[node_idx].data().children[child_idx];
+        let child = &mut self.nodes[node_idx].data_mut().children[child_idx];
+        child.expanded = true;
         state.apply_action(&child.action);
         let child_node_idx = child.node_idx;
-        self.generate_node(state, child_node_idx);
         if unexpanded.len() == 1 {  // that was the last remaining one
             self.nodes[node_idx].fully_expanded = true;
         }
@@ -200,24 +198,46 @@ where S::Action: Clone {
             let new_idx = self.nodes.len();
             let new_node = Node::new();
             self.nodes.push(new_node);
-            children.push(Child { node_idx: new_idx, action });
+            children.push(Child { node_idx: new_idx, action, expanded: false });
         }
         assert!(!children.is_empty(), "No action possible for node_idx: {}", node_idx);
         self.nodes[node_idx].generate(children);
     }
 
-    fn playout(&mut self, state: &mut S) {
+    fn playout(&mut self, state: &mut S, node_idx: usize, path: &Path) -> u64 {
+        let mut path = path.clone();
+        let mut node_idx = node_idx;
         while !state.is_final() {
-            let actions = state.generate_actions();
-            // TODO configurable
-            let pick_idx = if rand::thread_rng().gen::<f32>() < 0.1 {
+            if !self.nodes[node_idx].is_generated() {
+                // TODO: this breaks out assumption that "generated" = started expansion
+                // end up with nodes that are not 'full_expanded' but have all generated
+                // children
+                self.generate_node(state, node_idx);
+            }
+            let actions: Vec<&S::Action> = self.nodes[node_idx].data().children.iter()
+                .map(|c| &c.action).collect();
+            assert!(!actions.is_empty());
+            // TODO configurable random %
+            let child_idx = if rand::thread_rng().gen::<f32>() < 0.1 {
                 *(0..actions.len()).collect::<Vec<usize>>()
                     .choose(&mut rand::thread_rng()).unwrap()
             } else {
                 state.greedy_pick_action(&actions)
             };
-            state.apply_action(&actions[pick_idx]);
+            path.push(child_idx);
+            let child = &self.nodes[node_idx].data().children[child_idx];
+            state.apply_action(&child.action);
+            node_idx = child.node_idx;
         }
+        let score = state.evaluate();
+        // TODO verbose setting
+        if score > self.best_seen_score {
+            println!("Score: {} ({} rounds ({} skipped))", score, self.rounds,
+                     self.skipped_rounds);
+            self.best_seen_score = score;
+            self.best_path = path;
+        }
+        score
     }
 
     fn backprop(&mut self, score: u64, path: &Path) {

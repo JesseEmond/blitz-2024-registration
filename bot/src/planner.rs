@@ -69,9 +69,10 @@ impl Planner {
             state.clone(), constants, cannon, random.clone());
         let mut mcts = MCTS::new(search_state);
         mcts.run_with_budget(Duration::from_secs(1));
+        // TODO: only get single best action instead of all at once
+        let mut actions = mcts.best_actions_sequence();
+        actions.reverse();
 
-        let mut greedy = SearcherState::new(
-            state.clone(), constants, cannon, random.clone());
         while !state.is_done() {
             for event in run_server_tick(
                 &mut state, &mut random, constants) {
@@ -81,13 +82,11 @@ impl Planner {
                 });
             }
             if state.is_done() { break; }
-            let actions = greedy.generate_actions();
-            let pick_idx = greedy.greedy_pick_action(&actions);
-            greedy.apply_action(&actions[pick_idx]);
-            match actions[pick_idx] {
+            let best_action = actions.pop().expect("Action plan was too short");
+            match best_action {
                 Action::Hold { .. } => {},
                 Action::Shoot { aim, target_id, .. } => events.push(Event {
-                    info: state.shoot(cannon, constants, &aim, target_id).unwrap(),
+                    info: state.shoot(cannon, constants, &aim, *target_id).unwrap(),
                     tick: state.tick
                 }),
             }
@@ -264,10 +263,10 @@ impl SearchState for SearcherState<'_> {
         self.state.score.into()
     }
 
-    fn greedy_pick_action(&self, actions: &Vec<Action>) -> usize {
+    fn greedy_pick_action(&self, actions: &Vec<&Action>) -> usize {
         // TODO: better heuristics?
         actions.iter().enumerate()
-            .max_by_key(|(idx, a)| (match a {
+            .max_by_key(|(idx, &a)| (match a {
                 Action::Shoot { potential_score, .. } => potential_score,
                 Action::Hold { potential_score } => potential_score,
             }, actions.len() - idx))  // prioritize earlier actions

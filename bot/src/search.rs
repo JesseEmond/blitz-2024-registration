@@ -19,7 +19,7 @@ pub trait SearchState {
         self.theoretical_max()
     }
 
-    fn greedy_pick_action(&self, actions: &Vec<Self::Action>) -> usize;
+    fn greedy_pick_action(&self, actions: &Vec<&Self::Action>) -> usize;
 }
 
 #[derive(Clone)]
