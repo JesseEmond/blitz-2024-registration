@@ -85,8 +85,9 @@ class PlanFollower(game_events.Listener):
             (e for e in self.get_tick_events(events.current_tick, 'Hit')
              if e.rocket_id == rocket_id or e.meteor_id == meteor_id),
             None)
-        self.asserter.expect(hit_event,
-            f'Missing hit of {meteor_id} by {rocket_id}, Plan: {self.print_plan()}')
+        if not self.asserter.expect(hit_event,
+            f'Missing hit of {meteor_id} by {rocket_id}, Plan: {self.print_plan()}'):
+            return
         event = self.plan.remove(hit_event)
         right_rocket = (hit_event.rocket_id == rocket_id or
                         rocket_id == game_events.INSTANT_KILL_ROCKET_ID)
@@ -114,8 +115,9 @@ class PlanFollower(game_events.Listener):
             (e for e in self.get_tick_events(events.current_tick, 'MeteorMiss')
              if e.id == meteor_id),
             None)
-        self.asserter.expect(miss_event,
-            f'Unexpected miss of: {meteor_id}, Plan: {self.print_plan()}')
+        if not self.asserter.expect(miss_event,
+            f'Unexpected miss of: {meteor_id}, Plan: {self.print_plan()}'):
+            return
         event = self.plan.remove(miss_event)
         self.asserter.expect(miss_event.id == meteor_id,
             'Miss meteor ID was not predicted correctly. '
@@ -132,8 +134,9 @@ class PlanFollower(game_events.Listener):
             (e for e in self.get_tick_events(events.current_tick, 'MeteorSpawn')
              if e.id == meteor_id),
             None)
-        self.asserter.expect(spawn_event,
-            f'Unexpected spawn of: {meteor_id}, Plan: {self.print_plan()}')
+        if not self.asserter.expect(spawn_event,
+            f'Unexpected spawn of: {meteor_id}, Plan: {self.print_plan()}'):
+            return
         event = self.plan.remove(spawn_event)
         self.asserter.expect(spawn_event.id == meteor_id,
             'Spawn meteor ID was not predicted correctly. '
@@ -163,10 +166,11 @@ class PlanFollower(game_events.Listener):
             (e for e in self.get_tick_events(events.current_tick, 'Split')
              if e.id == meteor_id),
             None)
-        self.asserter.expect(
+        if not self.asserter.expect(
             spawn_event,
             f'Unexpected split of: {expected.spawn.parent.id} into {meteor_id}, '
-            f'Plan: {self.print_plan()}')
+            f'Plan: {self.print_plan()}'):
+            return
         event = self.plan.remove(spawn_event)
         self.asserter.expect(spawn_event.id == meteor_id,
             'Split meteor ID was not predicted correctly. '
