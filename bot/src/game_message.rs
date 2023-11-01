@@ -4,20 +4,24 @@ use std::fmt;
 use serde::{Deserialize, Deserializer};
 use serde::de::{MapAccess, Visitor};
 
-pub const MAX_TICKS: u16 = 1000;
+pub type Score = u16;
+pub type Tick = u16;
+pub const MAX_TICKS: Tick = 1000;
+
+pub type Id = u32;
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GameMessage {
     #[serde(rename = "type")]
     pub game_type: String,
-    pub tick: u16,
+    pub tick: Tick,
     pub last_tick_errors: Vec<String>,
     pub constants: Constants,
     pub cannon: Cannon,
     pub meteors: Vec<Meteor>,
     pub rockets: Vec<Projectile>,
-    pub score: u32,
+    pub score: Score,
 }
 
 #[derive(Deserialize, Hash, PartialEq, Eq, Default, Copy, Clone, Debug)]

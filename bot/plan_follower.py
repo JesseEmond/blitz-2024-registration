@@ -17,7 +17,6 @@ class PlanFollower(game_events.Listener):
         self.asserter = asserter_
         self.plan = None
         self.just_shot_id = None
-        self.rocket_targets = {}
 
     def assign_plan(self, plan: List[nostradamus.Event]) -> None:
         self.plan = plan
@@ -29,7 +28,7 @@ class PlanFollower(game_events.Listener):
                 line += f'Spawn M{event.id}: '
                 line += f'({event.position[0]:.2f}, {event.position[1]:.2f})'
             elif event.event_type == 'Shoot':
-                line += f'Shoot R{event.id} toward M{event.target_id} '
+                line += f'Shoot R{event.id} '
                 line += f'(aim: ({event.position[0]:.2f}, {event.position[1]:.2f}))'
             elif event.event_type == 'Hit':
                 line += f'Hit R{event.rocket_id} with M{event.meteor_id}'
@@ -51,7 +50,6 @@ class PlanFollower(game_events.Listener):
             actions.append(LookAtAction(Vector(x, y)))
             if next_shot.tick == tick:
                 self.just_shot_id = next_shot.id
-                self.rocket_targets[next_shot.id] = next_shot.target_id
                 self.plan.pop(0)
                 actions.append(ShootAction())
         return actions
@@ -89,25 +87,10 @@ class PlanFollower(game_events.Listener):
             f'Missing hit of {meteor_id} by {rocket_id}, Plan: {self.print_plan()}'):
             return
         event = self.plan.remove(hit_event)
-        right_rocket = (hit_event.rocket_id == rocket_id or
-                        rocket_id == game_events.INSTANT_KILL_ROCKET_ID)
-        # TODO restore once ID prediction in planner is fixed
-        # self.asserter.expect(right_rocket,
-        #     f'Predicted rocket {hit_event.rocket_id} hit on {hit_event.meteor_id}, got '
-        #     f'{rocket_id} hit on {meteor_id}')
-        # Now we know we can trust the hit_event.rocket_id. Use it, in case this
-        # was an instant kill (so our game_events doesn't know the true rocket
-        # id)
-        # rocket_id = hit_event.rocket_id
-        # self.asserter.expect(
-        #     self.rocket_targets[rocket_id] == meteor_id,
-        #     f'Rocket {rocket_id} did not hit the intended '
-        #     f'{self.rocket_targets[rocket_id]}, instead it hit {meteor_id}')
 
     def on_whiff(self, events: game_events.GameEvents, rocket_id: str) -> None:
         self.asserter.expect(False,
             f'Rocket {rocket_id} whiffed! '
-            f'Target was: {self.rocket_targets.get(rocket_id)} '
             f'Plan: {self.print_plan()}')
 
     def on_miss(self, events: game_events.GameEvents, meteor_id: str) -> None:
@@ -122,11 +105,6 @@ class PlanFollower(game_events.Listener):
         self.asserter.expect(miss_event.id == meteor_id,
             'Miss meteor ID was not predicted correctly. '
             f'Predicted {miss_event.id} Got {meteor_id}')
-        targeted = next(
-            (r for r, m in self.rocket_targets.items() if m == meteor_id),
-            None)
-        self.asserter.expect(targeted is None,
-            f'Meteor {meteor_id} should have been hit by {targeted}')
 
     def on_meteor_spawn(self, events: game_events.GameEvents,
                         meteor_id: str) -> None:
@@ -198,13 +176,6 @@ class PlanFollower(game_events.Listener):
 
     def on_before_events(self, events: game_events.GameEvents,
                          game: GameMessage, changes: game_events.Changes) -> None:
-        all_rocket_ids = {r.id for r in game.rockets}
-        all_meteor_ids = {m.id for m in game.meteors}
-        for rocket_id, meteor_id in self.rocket_targets.items():
-            self.asserter.expect(rocket_id not in all_meteor_ids,
-                f'Predicted rocket id {rocket_id}, but this was a meteor!')
-            self.asserter.expect(meteor_id not in all_rocket_ids,
-                f'Predicted meteor id {meteor_id}, but this was a rocket!')
         skipped = [e for e in self.plan if e.tick < game.tick]
         self.asserter.expect(not skipped,
             f'Plan has skipped event(s): {skipped}')

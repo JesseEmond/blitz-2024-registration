@@ -113,7 +113,7 @@ where S::Action: Clone {
         let start = Instant::now();
         let mut rounds = 0;
         while start.elapsed() < budget {
-            self.run_round();
+            self.run_round(&mut rand::thread_rng());
             rounds += 1;
         }
         let duration = start.elapsed();
@@ -121,7 +121,7 @@ where S::Action: Clone {
         println!("Ran {} rounds in {:?}", rounds, duration);
     }
 
-    pub fn run_round(&mut self) {
+    pub fn run_round(&mut self, noise_rng: &mut impl Rng) {
         let mut state = self.start_state.clone();
         let (mut path, leaf_idx) = self.select_node(&mut state);
         let node_idx = self.expand_node(&mut state, leaf_idx, &mut path);
@@ -131,7 +131,7 @@ where S::Action: Clone {
             self.nodes[node_idx].skipped = true;
             return;  // Already played out this state -- skip it
         }
-        let score = self.playout(&mut state, node_idx, &path);
+        let score = self.playout(&mut state, node_idx, &path, noise_rng);
         self.backprop(score, &path);
     }
 
@@ -204,14 +204,11 @@ where S::Action: Clone {
         self.nodes[node_idx].generate(children);
     }
 
-    fn playout(&mut self, state: &mut S, node_idx: usize, path: &Path) -> u64 {
+    fn playout(&mut self, state: &mut S, node_idx: usize, path: &Path, noise_rng: &mut impl Rng) -> u64 {
         let mut path = path.clone();
         let mut node_idx = node_idx;
         while !state.is_final() {
             if !self.nodes[node_idx].is_generated() {
-                // TODO: this breaks out assumption that "generated" = started expansion
-                // end up with nodes that are not 'full_expanded' but have all generated
-                // children
                 self.generate_node(state, node_idx);
             }
             let actions: Vec<&S::Action> = self.nodes[node_idx].data().children.iter()
@@ -219,8 +216,7 @@ where S::Action: Clone {
             assert!(!actions.is_empty());
             // TODO configurable random %
             let child_idx = if rand::thread_rng().gen::<f32>() < 0.1 {
-                *(0..actions.len()).collect::<Vec<usize>>()
-                    .choose(&mut rand::thread_rng()).unwrap()
+                *(0..actions.len()).collect::<Vec<usize>>().choose(noise_rng).unwrap()
             } else {
                 state.greedy_pick_action(&actions)
             };

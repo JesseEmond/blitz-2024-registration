@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::time::{Instant};
 
-use nostradamus::game_message::default_game_settings;
+use nostradamus::game_message::{default_game_settings};
 use nostradamus::game_random::{GameRandom, OBSERVED_SEEDS};
 use nostradamus::planner::{Planner};
 use nostradamus::seedrandom::SeedRandom;
@@ -12,6 +12,7 @@ fn main() {
     let first_id = 0;
     let (constants, cannon) = default_game_settings();
     let longest_seed = OBSERVED_SEEDS.iter().map(|s| s.len()).max().unwrap();
+    let mut scores = Vec::new();
     // TODO: make single seed an arg optional
     for &seed in OBSERVED_SEEDS {
         print!("Seed {:0length$} = ",
@@ -24,5 +25,7 @@ fn main() {
         let plan = planner.plan(&cannon, &constants, first_id, random);
         let duration = start.elapsed();
         println!("{} (took {:?})", plan.score, duration);
+        scores.push(plan.score);
     }
+    println!("Max score: {}", scores.iter().max().unwrap());
 }

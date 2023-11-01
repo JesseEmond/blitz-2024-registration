@@ -1,5 +1,5 @@
 // Reproduces the server-side logic (based on the reverse-engineered local bin).
-use crate::game_message::{Cannon, Constants, MeteorType, MAX_TICKS};
+use crate::game_message::{Cannon, Constants, Id, MeteorType, Score, Tick, MAX_TICKS};
 use crate::game_random::GameRandom;
 use crate::physics::{collision_times, make_intersection, MovingCircle};
 use crate::spawn_schedule::{is_spawn_tick, remaining_spawns};
@@ -7,26 +7,28 @@ use crate::vec2::Vec2;
 
 #[derive(Clone, Copy, Debug)]
 pub enum EventInfo {
-    MeteorSpawn { id: u32, pos: Vec2, vel: Vec2, typ: MeteorType },
-    MeteorMiss { id: u32 },
-    Hit { rocket: u32, meteor: u32 },
-    Shoot { id: u32, pos: Vec2, target_id: u32 },
-    MeteorSplit { id: u32, parent_id: u32, pos: Vec2, vel: Vec2, typ: MeteorType },
+    MeteorSpawn { id: Id, pos: Vec2, vel: Vec2, typ: MeteorType },
+    MeteorMiss { id: Id },
+    Hit { rocket: Id, meteor: Id },
+    // Note: the target_id here is not a guarantee, mostly informative of plan
+    // at the time.
+    Shoot { id: Id, pos: Vec2, target_id: Id },
+    MeteorSplit { id: Id, parent_id: Id, pos: Vec2, vel: Vec2, typ: MeteorType },
 }
 
 #[derive(Clone)]
 pub struct GameState {
-    pub tick: u16,
-    pub next_id: u32,
+    pub tick: Tick,
+    pub next_id: Id,
     pub meteors: Vec<Meteor>,
     pub rockets: Vec<Rocket>,
     pub cooldown: u8,
-    pub score: u16,
+    pub score: Score,
 }
 
 #[derive(Clone)]
 pub struct Meteor {
-    pub id: u32,
+    pub id: Id,
     pub pos: Vec2,
     pub vel: Vec2,
     pub typ: MeteorType,
@@ -34,21 +36,21 @@ pub struct Meteor {
 }
 
 impl Meteor {
-    pub fn new(id: u32, pos: Vec2, vel: Vec2, typ: MeteorType) -> Self {
+    pub fn new(id: Id, pos: Vec2, vel: Vec2, typ: MeteorType) -> Self {
         Meteor { id, pos, vel, typ, destroyed: false }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Rocket {
-    pub id: u32,
+    pub id: Id,
     pub pos: Vec2,
     pub vel: Vec2,
     destroyed: bool,
 }
 
 impl Rocket {
-    pub fn new(id: u32, pos: Vec2, vel: Vec2) -> Self {
+    pub fn new(id: Id, pos: Vec2, vel: Vec2) -> Self {
         Rocket { id, pos, vel, destroyed: false }
     }
 }
@@ -64,14 +66,14 @@ struct Collision {
 // TODO: WIP
 // pub struct ExpectedHit {
 //     /// Already-shot rocket that we want to check.
-//     pub rocket_id: u32,
+//     pub rocket_id: Id,
 //     /// Meteor ID that we expect to hit.
 //     /// Note that this should be the ID after our rocket is generated (i.e. +1).
-//     pub meteor_id: u32,
+//     pub meteor_id: Id,
 // }
 
 // pub struct SimulationResult {
-//     pub score: u16,
+//     pub score: Score,
 //     pub did_hit: bool,
 // }
 
@@ -161,7 +163,7 @@ impl ServerSimulation<'_> {
         rocket.destroyed = true;
         self.state.meteors[collision.meteor_idx].destroyed = true;
         let parent = self.state.meteors[collision.meteor_idx].clone();
-        self.state.score += self.constants.get_meteor_info(parent.typ).score as u16;
+        self.state.score += self.constants.get_meteor_info(parent.typ).score as Score;
         let intersection = make_intersection(
             &MovingCircle {
                 pos: rocket.pos,
@@ -235,7 +237,7 @@ impl ServerSimulation<'_> {
 }
 
 impl GameState {
-    pub fn new(first_id: u32) -> Self {
+    pub fn new(first_id: Id) -> Self {
         Self {
             tick: 0,
             next_id: first_id,
@@ -247,7 +249,7 @@ impl GameState {
     }
 
     pub fn shoot(&mut self, cannon: &Cannon, constants: &Constants,
-                 target: &Vec2, target_id: u32) -> Option<EventInfo> {
+                 target: &Vec2, target_id: Id) -> Option<EventInfo> {
         assert!(self.cannon_ready());
         if target.x < cannon.position.x {
             return None;
@@ -268,19 +270,19 @@ impl GameState {
         self.tick == MAX_TICKS
     }
 
-    fn get_next_id(&mut self) -> u32 {
+    fn get_next_id(&mut self) -> Id {
         let id = self.next_id;
         self.next_id += 1;
         id
     }
 
-    pub fn potential_score(&self, cannon: &Cannon, constants: &Constants) -> u16 {
-        let board_score: u16 = self.meteors.iter()
+    pub fn potential_score(&self, cannon: &Cannon, constants: &Constants) -> Score {
+        let board_score: Score = self.meteors.iter()
             // Ignore meteors that we can't ever hit
             .filter(|&m| m.pos.x + constants.get_meteor_info(m.typ).size >= cannon.position.x)
             .map(|m| total_score(m.typ, constants)).sum();
         let large_score = total_score(MeteorType::Large, constants);
-        let potential_score = large_score * remaining_spawns(self.tick) as u16;
+        let potential_score = large_score * remaining_spawns(self.tick) as Score;
         self.score + board_score + potential_score
     }
 
@@ -394,10 +396,10 @@ pub fn max_rocket_x(constants: &Constants) -> f64 {
     (constants.world.width as f64) + constants.rockets.size * 2.0
 }
 
-pub fn total_score(meteor_type: MeteorType, constants: &Constants) -> u16 {
+pub fn total_score(meteor_type: MeteorType, constants: &Constants) -> Score {
     let mut score = 0;
     let info = &constants.get_meteor_info(meteor_type);
-    score += info.score as u16;
+    score += info.score as Score;
     for explosion in &info.explodes_into {
         score += total_score(explosion.meteor_type, constants);
     }
