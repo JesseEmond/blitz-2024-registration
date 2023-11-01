@@ -6,11 +6,18 @@ use rustc_hash::FxHasher;
 
 use crate::game_message::{Cannon, Constants, Id, Score, Tick};
 use crate::game_random::GameRandom;
-use crate::mcts::MCTS;
+use crate::mcts::{MCTS, MCTSOptions};
 use crate::physics::{aim_ahead, MovingCircle};
 use crate::search::SearchState;
 use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
 use crate::vec2::Vec2;
+
+const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
+    exploration_multiplier: 1.0,
+    random_action_prob: 0.08,
+};
+const MCTS_META_ITERS: usize = 3;
+const MCTS_BUDGET: Duration = Duration::from_millis(1000);
 
 /// Events at the time where the client would see them (i.e. the tick after
 /// they happened). Note that we move forward the meteors in EventInfos by one
@@ -67,9 +74,9 @@ impl Planner {
             state.clone(), constants, cannon, random.clone());
         let mut best_seen_score = 0;
         let mut actions = Vec::new();
-        for _ in 0..3 {  // TODO: formalize this into a MCTS meta search
-            let mut mcts = MCTS::new(search_state.clone());
-            mcts.run_with_budget(Duration::from_millis(500));
+        for _ in 0..MCTS_META_ITERS {
+            let mut mcts = MCTS::new(search_state.clone(), MCTS_OPTIONS);
+            mcts.run_with_budget(MCTS_BUDGET);
             if mcts.best_seen_score > best_seen_score {
                 best_seen_score = mcts.best_seen_score;
                 println!("New best: {}", best_seen_score);

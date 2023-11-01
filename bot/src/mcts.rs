@@ -7,6 +7,11 @@ use rand::prelude::SliceRandom;
 
 use crate::search::SearchState;
 
+pub struct MCTSOptions {
+    pub exploration_multiplier: f64,
+    pub random_action_prob: f32,
+}
+
 struct Child<S: SearchState> {
     node_idx: usize,
     /// Action taken to get to this child.
@@ -61,7 +66,7 @@ impl<S: SearchState> Node<S> {
         self.num_sims += sims;
     }
 
-    fn uct(&self, parent_sims: u64, max_score: u64) -> f64 {
+    fn uct(&self, parent_sims: u64, max_score: u64, exploration: f64) -> f64 {
         if self.skipped { return 0.0; }
         assert!(self.num_sims > 0);
         // TODO try single player MCTS UCT?
@@ -69,7 +74,7 @@ impl<S: SearchState> Node<S> {
         // Treat our win ratio as the sum of total scores normalized by the max
         // possible score (times the number of sims).
         let win_ratio = self.sum_scores as f64 / (self.num_sims * max_score) as f64;
-        let c: f64 = 2.0_f64.sqrt();  // TODO: make configurable
+        let c: f64 = exploration * 2.0_f64.sqrt();
         win_ratio + c * ((parent_sims as f64).ln() / (self.num_sims as f64)).sqrt()
     }
 }
@@ -81,6 +86,7 @@ pub struct MCTS<S: SearchState> {
     start_state: S,
     root_idx: usize,
     nodes: Vec<Node<S>>,
+    options: MCTSOptions,
     /// Max possible score, used to normalize scores for UCT.
     max_score: u64,
     rounds: usize,
@@ -92,7 +98,7 @@ pub struct MCTS<S: SearchState> {
 
 impl<S: SearchState + Clone> MCTS<S>
 where S::Action: Clone {
-    pub fn new(start_state: S) -> Self {
+    pub fn new(start_state: S, options: MCTSOptions) -> Self {
         let root = Node::new();
         let theoretical_max = start_state.theoretical_max();
         assert!(theoretical_max > 0);
@@ -100,6 +106,7 @@ where S::Action: Clone {
             start_state,
             nodes: vec![root],
             max_score: theoretical_max.into(),
+            options,
             root_idx: 0,
             rounds: 0,
             skipped_rounds: 0,
@@ -215,8 +222,7 @@ where S::Action: Clone {
             let actions: Vec<&S::Action> = self.nodes[node_idx].data().children.iter()
                 .map(|c| &c.action).collect();
             assert!(!actions.is_empty());
-            // TODO configurable random %
-            let child_idx = if noise_rng.gen::<f32>() < 0.08 {
+            let child_idx = if noise_rng.gen::<f32>() < self.options.random_action_prob {
                 *(0..actions.len()).collect::<Vec<usize>>().choose(noise_rng).unwrap()
             } else {
                 state.greedy_pick_action(&actions)
@@ -249,10 +255,11 @@ where S::Action: Clone {
     /// Select child index with the best UCT score.
     fn best_uct(&self, parent_idx: usize) -> usize {
         let parent_sims = self.nodes[parent_idx].num_sims;
+        let exploration = self.options.exploration_multiplier;
         self.nodes[parent_idx].data().children.iter().enumerate()
             .max_by(|(_, a), (_, b)| {
-                self.nodes[a.node_idx].uct(parent_sims, self.max_score)
-                    .total_cmp(&self.nodes[b.node_idx].uct(parent_sims, self.max_score))
+                self.nodes[a.node_idx].uct(parent_sims, self.max_score, exploration)
+                    .total_cmp(&self.nodes[b.node_idx].uct(parent_sims, self.max_score, exploration))
             }).map(|(idx, _)| idx).unwrap()
     }
 }
