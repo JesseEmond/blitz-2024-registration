@@ -65,12 +65,19 @@ impl Planner {
 
         let search_state = SearcherState::new(
             state.clone(), constants, cannon, random.clone());
-        let mut mcts = MCTS::new(search_state);
-        mcts.run_with_budget(Duration::from_secs(1));
+        let mut best_seen_score = 0;
+        let mut actions = Vec::new();
+        for _ in 0..3 {  // TODO: formalize this into a MCTS meta search
+            let mut mcts = MCTS::new(search_state.clone());
+            mcts.run_with_budget(Duration::from_millis(500));
+            if mcts.best_seen_score > best_seen_score {
+                best_seen_score = mcts.best_seen_score;
+                println!("New best: {}", best_seen_score);
+                actions = mcts.best_actions_sequence();
+                actions.reverse();  // reverse so we can pop the actions
+            }
+        }
         // TODO: only get single best action instead of all at once
-        let mut actions = mcts.best_actions_sequence();
-        actions.reverse();  // reverse so we can pop the actions
-
         while !state.is_done() {
             for event in run_server_tick(
                 &mut state, &mut random, constants) {
