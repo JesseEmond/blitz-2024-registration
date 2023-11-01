@@ -17,9 +17,7 @@ async def run():
 
     async with websockets.connect(uri, max_size=None) as websocket:
         is_server = "TOKEN" in os.environ
-        bot = Bot(
-            on_server=is_server or 'VERBOSE' in os.environ,
-            use_py_bot="USE_PY_BOT" in os.environ)
+        bot = Bot(on_server=is_server or 'VERBOSE' in os.environ)
         if "TOKEN" in os.environ:
             await websocket.send(json.dumps({"type": "REGISTER", "token": os.environ["TOKEN"]}))
         else:
