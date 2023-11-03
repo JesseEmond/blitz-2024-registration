@@ -29,17 +29,19 @@ struct NodeData<S: SearchState> {
 struct Node<S: SearchState> {
     data: Option<NodeData<S>>,
     fully_expanded: bool,
+    /// Max possible score seen in this branch, used to normalize scores for UCT.
+    max_score: u64,
     sum_scores: u64,
     num_sims: u64,
     skipped: bool,
-    // TODO: keep min/max scores, used in UCT
 }
 
 impl<S: SearchState> Node<S> {
-    fn new() -> Self {
+    fn new(max_score: u64) -> Self {
         Self {
             data: None,
             fully_expanded: false,
+            max_score,
             sum_scores: 0,
             num_sims: 0,
             skipped: false,
@@ -92,8 +94,6 @@ pub struct MCTS<S: SearchState> {
     // Node indices that we are free to re-use when generating new nodes.
     free_list: Vec<NodeIdx>,
     options: MCTSOptions,
-    /// Max possible score, used to normalize scores for UCT.
-    max_score: u64,
     rounds: usize,
     seen_hashes: HashSet<u64>,
     skipped_rounds: usize,  // rounds we skipped thanks to hashes
@@ -104,13 +104,10 @@ pub struct MCTS<S: SearchState> {
 impl<S: SearchState + Clone> MCTS<S>
 where S::Action: Clone {
     pub fn new(start_state: S, options: MCTSOptions) -> Self {
-        let theoretical_max = start_state.theoretical_max();
-        assert!(theoretical_max > 0);
         Self {
             start_state,
-            nodes: vec![Node::new()],
+            nodes: vec![Node::new(/*max_score=*/1)],
             free_list: Vec::new(),
-            max_score: theoretical_max.into(),
             options,
             root_idx: 0,
             rounds: 0,
@@ -135,7 +132,7 @@ where S::Action: Clone {
 
     pub fn run_round(&mut self, noise_rng: &mut impl Rng) {
         let mut state = self.start_state.clone();
-        let (mut path, leaf_idx) = self.select_node(&mut state);
+        let (mut path, leaf_idx) = self.select_node(&mut state, noise_rng);
         let node_idx = self.expand_node(&mut state, leaf_idx, &mut path);
         self.rounds += 1;
         if !self.seen_hashes.insert(state.transposition_hash()) {
@@ -159,7 +156,9 @@ where S::Action: Clone {
     }
 
     pub fn best_action(&self) -> S::Action {
-        let child_idx = self.best_uct(self.root_idx, /*exploration_multiplier=*/0.0);
+        let child_idx = self.best_uct(
+            self.root_idx, /*exploration_multiplier=*/0.0,
+            &mut rand::thread_rng());
         self.nodes[self.root_idx].data().children[child_idx].action.clone()
     }
 
@@ -181,11 +180,12 @@ where S::Action: Clone {
     }
 
     /// Selects (path, leaf_node_idx), using UCT.
-    fn select_node(&self, state: &mut S) -> (Path, NodeIdx) {
+    fn select_node(&self, state: &mut S, noise_rng: &mut impl Rng) -> (Path, NodeIdx) {
         let mut node_idx = self.root_idx;
         let mut path = Path::new();
         while self.nodes[node_idx].fully_expanded {
-            let child_idx = self.best_uct(node_idx, self.options.exploration_multiplier);
+            let child_idx = self.best_uct(
+                node_idx, self.options.exploration_multiplier, noise_rng);
             path.push(child_idx);
             let child = &self.nodes[node_idx].data().children[child_idx];
             state.apply_action(&child.action);
@@ -229,7 +229,7 @@ where S::Action: Clone {
         assert!(!self.nodes[node_idx].is_generated());
         let mut children = Vec::new();
         for action in state.generate_actions() {
-            let (new_idx, _) = self.new_node();
+            let (new_idx, _) = self.new_node(self.nodes[node_idx].max_score);
             children.push(Child { node_idx: new_idx, action, expanded: false });
         }
         assert!(!children.is_empty(), "No action possible for node_idx: {}", node_idx);
@@ -278,16 +278,23 @@ where S::Action: Clone {
     }
 
     /// Select child index with the best UCT score.
-    fn best_uct(&self, parent_idx: NodeIdx, exploration: f64) -> ChildIdx {
+    fn best_uct(&self, parent_idx: NodeIdx, exploration: f64,
+                noise_rng: &mut impl Rng) -> ChildIdx {
+        let parent_max_score = self.nodes[parent_idx].max_score;
         let parent_sims = self.nodes[parent_idx].num_sims;
-        self.nodes[parent_idx].data().children.iter().enumerate()
-            .max_by(|(_, a), (_, b)| {
-                self.nodes[a.node_idx].uct(parent_sims, self.max_score, exploration)
-                    .total_cmp(&self.nodes[b.node_idx].uct(parent_sims, self.max_score, exploration))
-            }).map(|(idx, _)| idx).unwrap()
+        let max_uct = self.nodes[parent_idx].data().children.iter()
+            .map(|c| self.nodes[c.node_idx].uct(parent_sims, parent_max_score, exploration))
+            .max_by(|u1, u2| u1.partial_cmp(u2).unwrap())
+            .unwrap();
+        let options: Vec<ChildIdx> = self.nodes[parent_idx].data().children.iter().enumerate()
+            .filter(|(_, c)| self.nodes[c.node_idx].uct(
+                    parent_sims, parent_max_score, exploration) == max_uct)
+            .map(|(idx, _)| idx).collect();
+        *options.choose(noise_rng).unwrap()
+
     }
 
-    fn new_node(&mut self) -> (NodeIdx, &mut Node<S>) {
+    fn new_node(&mut self, max_score: u64) -> (NodeIdx, &mut Node<S>) {
         let idx = if let Some(idx) = self.free_list.pop() {
             // The node's children are now in the free list.
             if self.nodes[idx].is_generated() {
@@ -295,11 +302,11 @@ where S::Action: Clone {
                     self.free_list.push(child.node_idx);
                 }
             }
-            self.nodes[idx] = Node::new();
+            self.nodes[idx] = Node::new(max_score);
             idx
         } else {
             let idx = self.nodes.len();
-            self.nodes.push(Node::new());
+            self.nodes.push(Node::new(max_score));
             idx
         };
         (idx, &mut self.nodes[idx])
