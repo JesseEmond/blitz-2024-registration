@@ -7,7 +7,7 @@ use rustc_hash::FxHasher;
 use crate::game_message::{Cannon, Constants, Id, Score, Tick};
 use crate::game_random::GameRandom;
 use crate::mcts::{MCTS, MCTSOptions};
-use crate::physics::{aim_ahead, MovingCircle};
+use crate::physics::{get_aim_options, MovingCircle};
 use crate::search::SearchState;
 use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
 use crate::vec2::Vec2;
@@ -15,10 +15,9 @@ use crate::vec2::Vec2;
 const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     exploration_multiplier: 1.0,
     // TODO: try full random playthrough % instead?
-    random_action_prob: 0.03,
+    random_action_prob: 0.05,
 };
-const MCTS_META_ITERS: usize = 3;
-const MCTS_BUDGET: Duration = Duration::from_millis(750);
+const MCTS_BUDGET: Duration = Duration::from_millis(600);
 
 /// Events at the time where the client would see them (i.e. the tick after
 /// they happened). Note that we move forward the meteors in EventInfos by one
@@ -190,7 +189,7 @@ impl<'a> SearcherState<'a> {
                 size: self.constants.get_meteor_info(meteor_vision.meteor.typ).size,
             };
             let cannon_pos: Vec2 = self.cannon.position.into();
-            if let Some(aim) = aim_ahead(&cannon_pos, self.constants.rockets.speed, &target) {
+            for aim in get_aim_options(&cannon_pos, self.constants.rockets.speed, &target) {
                 let mut shot = TentativeShot {
                     aim: &aim,
                     cannon: self.cannon,
@@ -216,6 +215,7 @@ impl<'a> SearcherState<'a> {
                     } else {
                         backup_actions.push(action);
                     }
+                    break;  // don't consider other shooting options
                 }
             }
         }
