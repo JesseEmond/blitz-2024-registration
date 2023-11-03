@@ -141,7 +141,7 @@ where S::Action: Clone {
             self.nodes[node_idx].skipped = true;
             return;  // Already played out this state -- skip it
         }
-        let score = self.playout(&mut state, node_idx, &path, noise_rng);
+        let score = self.playout(&mut state, node_idx, &mut path, noise_rng);
         self.backprop(score, &path);
     }
 
@@ -237,9 +237,9 @@ where S::Action: Clone {
         self.nodes[node_idx].generate(children);
     }
 
-    fn playout(&mut self, state: &mut S, node_idx: NodeIdx, path: &Path,
+    fn playout(&mut self, state: &mut S, node_idx: NodeIdx, path: &mut Path,
                noise_rng: &mut impl Rng) -> u64 {
-        let mut path = path.clone();
+        let mut current_path = path.clone();
         let mut node_idx = node_idx;
         while !state.is_final() {
             if !self.nodes[node_idx].is_generated() {
@@ -253,18 +253,21 @@ where S::Action: Clone {
             } else {
                 state.greedy_pick_action(&actions)
             };
-            path.push(child_idx);
+            current_path.push(child_idx);
             let child = &self.nodes[node_idx].data().children[child_idx];
             state.apply_action(&child.action);
             node_idx = child.node_idx;
         }
         let score = state.evaluate();
+        if score >= self.best_seen_score {
+            *path = current_path.clone();  // backprop through this entire strong path
+        }
         // TODO verbose setting
         if score > self.best_seen_score {
             println!("Score: {} ({} rounds ({} skipped))", score, self.rounds,
                      self.skipped_rounds);
             self.best_seen_score = score;
-            self.best_path = path;
+            self.best_path = current_path;
         }
         score
     }
