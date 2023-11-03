@@ -18,7 +18,7 @@ const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     random_action_prob: 0.03,
 };
 const MCTS_META_ITERS: usize = 3;
-const MCTS_BUDGET: Duration = Duration::from_millis(900);
+const MCTS_BUDGET: Duration = Duration::from_millis(750);
 
 /// Events at the time where the client would see them (i.e. the tick after
 /// they happened). Note that we move forward the meteors in EventInfos by one
@@ -30,7 +30,7 @@ pub struct Event {
     pub info: EventInfo
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct MeteorVision {
     meteor: Meteor,
     // If set, the tick where this meteor will appear. If not set, the meteor is
@@ -128,7 +128,7 @@ impl<'a> Planner<'a> {
 pub enum Action {
     Shoot {
         aim: Vec2, target_id: Id, predicted_hits: Vec<Id>,
-        potential_score: Score
+        potential_score: Score, ticks_until_unshootable: Tick,
     },
     Hold { potential_score: Score, },
 }
@@ -207,6 +207,9 @@ impl<'a> SearcherState<'a> {
                         aim,
                         potential_score: results.score,
                         predicted_hits: results.hits,
+                        ticks_until_unshootable: ticks_until_unshootable(
+                            meteor_vision, self.cannon, self.constants,
+                            self.state.tick),
                     };
                     if as_expected && !already_targeted {
                         actions.push(action);
@@ -255,11 +258,11 @@ impl SearchState for SearcherState<'_> {
             Action::Hold { potential_score } => {
                 self.potential_score = *potential_score;
             },
-            Action::Shoot { aim, potential_score, predicted_hits, target_id } => {
+            Action::Shoot { aim, potential_score, predicted_hits, target_id, .. } => {
                 self.potential_score = *potential_score;
                 self.predicted_hits = predicted_hits.clone();
                 self.apply_shot(aim, *target_id);
-            }
+            },
         }
         self.run_one_tick();
     }
@@ -277,12 +280,8 @@ impl SearchState for SearcherState<'_> {
     }
 
     fn greedy_pick_action(&self, actions: &Vec<&Action>) -> usize {
-        // TODO: better heuristics?
         actions.iter().enumerate()
-            .max_by_key(|(idx, &a)| (match a {
-                Action::Shoot { potential_score, .. } => potential_score,
-                Action::Hold { potential_score } => potential_score,
-            }, actions.len() - idx))  // prioritize earlier actions
+            .max_by_key(|(idx, &action)| heuristic_sort_key(*idx, action, actions.len()))
             .map(|(idx, _)| idx).unwrap()
     }
 
@@ -502,12 +501,53 @@ fn spawn_delta_t(vision: &MeteorVision, current_tick: Tick) -> Tick {
     }
 }
 
+fn ticks_until_unshootable(vision: &MeteorVision, cannon: &Cannon,
+                           constants: &Constants, current_tick: Tick) -> Tick {
+    let size = constants.get_meteor_info(vision.meteor.typ).size;
+    let min_x = cannon.position.x - size;
+    let remaining_x = vision.meteor.pos.x - min_x;
+    assert!(remaining_x >= 0.0);
+    assert!(vision.meteor.vel.x <= 0.0);
+    let ticks_x = if vision.meteor.vel.x < 0.0 { remaining_x / (-vision.meteor.vel.x) } else { f64::MAX };
+    let ticks_y = if vision.meteor.vel.y > 0.0 {
+        let remaining_y = constants.world.height as f64 - vision.meteor.pos.y;
+        remaining_y / vision.meteor.vel.y
+    } else if vision.meteor.vel.y < 0.0 {
+        let remaining_y = vision.meteor.pos.y;
+        remaining_y / (-vision.meteor.vel.y)
+    } else {
+        f64::MAX
+    };
+    let ticks = ticks_x.min(ticks_y).ceil();
+    let ticks = ticks.max(0.0);  // This can happen if the meteor is already off screen
+    ticks as Tick + spawn_delta_t(vision, current_tick)
+}
+
+fn heuristic_sort_key(action_idx: usize, action: &Action,
+                      num_actions: usize) -> (Score, i32, usize) {
+    // Note: larger value is prioritized
+    (
+        // Maximize the score we get from hitting this meteor
+        match action {
+            Action::Shoot { potential_score, .. } => *potential_score,
+            Action::Hold { potential_score } => *potential_score,
+        },
+        // If shooting, prioritize meteors that will go out of bounds sooner.
+        match action {
+            Action::Shoot { ticks_until_unshootable, .. } => -(*ticks_until_unshootable as i32),
+            Action::Hold { .. } => i32::MIN,
+        },
+        // Prioritize earlier actions (e.g. real meteors vs. predicted)
+        num_actions - action_idx,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
-    use crate::game_message::default_game_settings;
+    use crate::game_message::{default_game_settings, MeteorType};
     use crate::game_random::GameRandom;
     use crate::seedrandom::SeedRandom;
 
@@ -542,5 +582,76 @@ mod tests {
                 "Had {} remaining targets, there are {} remaining rockets. Targets: {:?} Rockets: {:?}",
                 repeat_state.predicted_hits.len(), state.rockets.len(),
                 repeat_state.predicted_hits, state.rockets);
+    }
+
+    #[test]
+    fn test_ticks_until_unshootable() {
+        let mut cannon = Cannon::default();
+        cannon.position.x = 200.0;
+        let mut constants = Constants::default();
+        constants.world.height = 800;
+        constants.meteor_infos.0[MeteorType::Large as usize].size = 50.0;
+        let current_tick = 0;
+
+        // Out top, vel x < 0
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::past(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(1000.0, 50.0),
+                    /*vel=*/Vec2::new(-1.0, -15.0), MeteorType::Large)),
+                    &cannon, &constants, current_tick), 4);
+        // Out top, vel x = 0
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::past(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(1000.0, 50.0),
+                    /*vel=*/Vec2::new(0.0, -15.0), MeteorType::Large)),
+                    &cannon, &constants, current_tick), 4);
+        // Out top, unspawned
+        let current_tick = 50;
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::future(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(1000.0, 50.0),
+                    /*vel=*/Vec2::new(0.0, -15.0), MeteorType::Large),
+                    /*spawn_tick=*/100),
+                    &cannon, &constants, current_tick), 54);
+        // Out bottom, vel x < 0
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::past(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(1000.0, 750.0),
+                    /*vel=*/Vec2::new(-1.0, 15.0), MeteorType::Large)),
+                    &cannon, &constants, current_tick), 4);
+        // Out bottom, vel x = 0
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::past(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(1000.0, 750.0),
+                    /*vel=*/Vec2::new(0.0, 15.0), MeteorType::Large)),
+                    &cannon, &constants, current_tick), 4);
+        // Out bottom, unspawned
+        let current_tick = 50;
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::future(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(1000.0, 750.0),
+                    /*vel=*/Vec2::new(0.0, 15.0), MeteorType::Large),
+                    /*spawn_tick=*/100),
+                    &cannon, &constants, current_tick), 54);
+        // Out left, vel y != 0
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::past(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(250.0, 400.0),
+                    /*vel=*/Vec2::new(-15.0, 1.0), MeteorType::Large)),
+                    &cannon, &constants, current_tick), 7);
+        // Out left, vel y = 0
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::past(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(250.0, 400.0),
+                    /*vel=*/Vec2::new(-15.0, 0.0), MeteorType::Large)),
+                    &cannon, &constants, current_tick), 7);
+        // Out left, unspawned
+        let current_tick = 50;
+        assert_eq!(ticks_until_unshootable(
+            &MeteorVision::future(Meteor::new(
+                    /*id=*/0, /*pos=*/Vec2::new(250.0, 400.0),
+                    /*vel=*/Vec2::new(-15.0, 0.0), MeteorType::Large),
+                    /*spawn_tick=*/100),
+                    &cannon, &constants, current_tick), 57);
     }
 }

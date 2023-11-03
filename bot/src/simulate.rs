@@ -26,7 +26,7 @@ pub struct GameState {
     pub score: Score,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Meteor {
     pub id: Id,
     pub pos: Vec2,
