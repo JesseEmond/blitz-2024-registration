@@ -14,10 +14,11 @@ use crate::vec2::Vec2;
 
 const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     exploration_multiplier: 1.0,
-    random_action_prob: 0.08,
+    // TODO: try full random playthrough % instead?
+    random_action_prob: 0.03,
 };
 const MCTS_META_ITERS: usize = 3;
-const MCTS_BUDGET: Duration = Duration::from_millis(1000);
+const MCTS_BUDGET: Duration = Duration::from_millis(900);
 
 /// Events at the time where the client would see them (i.e. the tick after
 /// they happened). Note that we move forward the meteors in EventInfos by one
@@ -51,60 +52,75 @@ impl MeteorVision {
     }
 }
 
-pub struct Plan {
-    pub events: Vec<Event>,
-    pub score: Score,
+// TODO: change name
+pub struct Planner<'a> {
+    pub game_state: GameState,
+    pub search_state: SearcherState<'a>,
+    cannon: &'a Cannon,
+    constants: &'a Constants,
+    random: GameRandom,
+    mcts: MCTS<SearcherState<'a>>,
 }
 
-pub struct Planner {
-}
-
-impl Planner {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> Planner<'a> {
+    pub fn new(first_id: Id, cannon: &'a Cannon, constants: &'a Constants,
+               random: GameRandom) -> Self {
+        let game_state = GameState::new(first_id);
+        let search_state = SearcherState::new(
+            game_state.clone(), &constants, &cannon,
+            random.clone());
+        let mcts = MCTS::new(search_state.clone(), MCTS_OPTIONS);
+        Self { game_state, search_state, cannon, constants, random, mcts }
     }
 
-    pub fn plan(
-        &mut self, cannon: &Cannon, constants: &Constants, first_id: Id,
-        mut random: GameRandom) -> Plan {
-        let mut state = GameState::new(first_id);
-        let mut events = Vec::new();
+    pub fn is_done(&self) -> bool {
+        self.game_state.is_done()
+    }
 
-        let search_state = SearcherState::new(
-            state.clone(), constants, cannon, random.clone());
-        let mut best_seen_score = 0;
-        let mut actions = Vec::new();
-        for _ in 0..MCTS_META_ITERS {
-            let mut mcts = MCTS::new(search_state.clone(), MCTS_OPTIONS);
-            mcts.run_with_budget(MCTS_BUDGET);
-            if mcts.best_seen_score > best_seen_score {
-                best_seen_score = mcts.best_seen_score;
-                println!("New best: {}", best_seen_score);
-                actions = mcts.best_actions_sequence();
-                actions.reverse();  // reverse so we can pop the actions
-            }
+    pub fn next_action(&mut self) -> Vec<Event> {
+        let mut events = Vec::new();
+        // TODO: keep MCTS state across ticks?
+        let mut best_seen_score = self.mcts.best_seen_score;
+        // let mut best_action = None;
+        // for _ in 0..MCTS_META_ITERS {
+        //     let mut mcts = MCTS::new(self.search_state.clone(), MCTS_OPTIONS);
+        //     mcts.run_with_budget(MCTS_BUDGET);
+        //     if mcts.best_seen_score > best_seen_score {
+        //         best_seen_score = mcts.best_seen_score;
+        //         println!("New best: {}", best_seen_score);
+        //         best_action = Some(mcts.best_action());
+        //         println!("Action: {:?}", best_action);
+        //     }
+        // }
+        self.mcts.run_with_budget(MCTS_BUDGET);
+        if self.mcts.best_seen_score > best_seen_score {
+            best_seen_score = self.mcts.best_seen_score;
+            println!("New best: {}", best_seen_score);
+            // best_action = Some(self.mcts.best_action());
+            // println!("Action: {:?}", best_action);
         }
-        // TODO: only get single best action instead of all at once
-        while !state.is_done() {
-            for event in run_server_tick(
-                &mut state, &mut random, constants) {
+        for event in run_server_tick(
+            &mut self.game_state, &mut self.random, &self.constants) {
+            events.push(Event {
+                tick: self.game_state.tick,
+                info: post_update_event_info(event)
+            });
+        }
+        if self.game_state.is_done() {
+            return events;
+        }
+        let best_action = self.mcts.pick_best_action().expect("No action returned");
+        self.search_state.apply_action(&best_action);
+        match best_action {
+            Action::Hold { .. } => {},
+            Action::Shoot { aim, target_id, .. } => {
                 events.push(Event {
-                    tick: state.tick,
-                    info: post_update_event_info(event)
-                });
-            }
-            if state.is_done() { break; }
-            let best_action = actions.pop().expect("Action plan was too short");
-            match best_action {
-                Action::Hold { .. } => {},
-                Action::Shoot { aim, target_id, .. } => {
-                    events.push(Event {
-                        info: state.shoot(cannon, constants, &aim, target_id).unwrap(),
-                        tick: state.tick });
-                },
-            }
+                    info: self.game_state.shoot(
+                        &self.cannon, &self.constants, &aim, target_id).unwrap(),
+                    tick: self.game_state.tick });
+            },
         }
-        Plan { events, score: state.score }
+        events
     }
 }
 
@@ -503,7 +519,7 @@ mod tests {
         let search_state = SearcherState::new(
             state.clone(), &constants, &cannon, random.clone());
         let mut noise_rng = SmallRng::seed_from_u64(42);
-        let mut mcts = MCTS::new(search_state.clone());
+        let mut mcts = MCTS::new(search_state.clone(), MCTS_OPTIONS);
         for _ in 0..10 {  // run a few iterations
             mcts.run_round(&mut noise_rng);
         }

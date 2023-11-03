@@ -29,11 +29,17 @@ fn main() {
         std::io::stdout().flush().unwrap();
         let start = Instant::now();
         let random = GameRandom::new(SeedRandom::from_seed(&seed));
-        let mut planner = Planner::new();
-        let plan = planner.plan(&cannon, &constants, first_id, random);
+        let mut planner = Planner::new(first_id, &cannon, &constants, random);
+        while !planner.is_done() {
+            if planner.game_state.tick % 100 == 0 {
+                println!("Tick: {}", planner.game_state.tick);
+            }
+            planner.next_action();
+        }
+        let score = planner.game_state.score;
         let duration = start.elapsed();
-        println!("{} (took {:?})", plan.score, duration);
-        scores.push(plan.score);
+        println!("{} (took {:?})", score, duration);
+        scores.push(score);
     }
     println!("Max score: {}", scores.iter().max().unwrap());
 }

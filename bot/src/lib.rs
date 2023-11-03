@@ -25,32 +25,31 @@ use crate::simulate::{EventInfo};
 // TODO: consider reworking to make it sendable?
 #[pyclass(unsendable)]
 pub struct Nostradamus {
-    game_first_tick: GameMessage,
-    random: GameRandom,
+    planner: Planner<'static>,
 }
 
 #[pymethods]
 impl Nostradamus {
     #[new]
     pub fn new(game_json: String) -> PyResult<Self> {
-        match serde_json::from_str(&game_json) {
+        match serde_json::from_str::<GameMessage>(&game_json) {
             Ok(game_message) => {
+                let first_id: u32 = game_message.meteors[0].projectile.id
+                    .parse().unwrap();
                 let random = GameRandom::infer_from_known_seeds(&game_message);
-                Ok(Self { random, game_first_tick: game_message })
+                // Box::leak is obviously not ideal, but doing this to work
+                // around pyclass being unable to have lifetimes specified.
+                let planner = Planner::new(
+                    first_id, Box::leak(Box::new(game_message.cannon)),
+                    Box::leak(Box::new(game_message.constants)), random);
+                Ok(Self { planner })
             },
             Err(e) => Err(PyValueError::new_err(e.to_string())),
         }
     }
 
-    pub fn plan(&mut self) -> Vec<PlanEvent> {
-        let mut planner = Planner::new();
-        let first_id: u32 = self.game_first_tick.meteors[0].projectile.id
-            .parse().unwrap();
-        let plan = planner.plan(
-            &self.game_first_tick.cannon, &self.game_first_tick.constants,
-            first_id, self.random.clone());
-        println!("Final score: {}", plan.score);
-        plan.events.iter().map(|&e| PlanEvent(e)).collect()
+    pub fn next_action(&mut self) -> Vec<PlanEvent> {
+        self.planner.next_action().iter().map(|&e| PlanEvent(e)).collect()
     }
 }
 

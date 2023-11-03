@@ -55,14 +55,14 @@ pub struct Meteor {
     pub meteor_type: MeteorType,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 pub struct Cannon {
     pub position: Vector,
     pub orientation: f64,
     pub cooldown: u8,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Constants {
     pub world: WorldConstants,
@@ -77,19 +77,19 @@ impl Constants {
     }
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 pub struct WorldConstants {
     pub width: usize,
     pub height: usize,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 pub struct RocketsConstants {
     pub speed: f64,
     pub size: f64,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MeteorInfos {
     pub score: f64,
@@ -98,7 +98,7 @@ pub struct MeteorInfos {
     pub explodes_into: Vec<ExplosionInfos>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplosionInfos {
     pub meteor_type: MeteorType,
@@ -146,7 +146,7 @@ pub fn default_game_settings() -> (Constants, Cannon) {
     (constants, cannon)
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AllMeteorInfos(pub [MeteorInfos; 3]);
 
 struct MeteorInfosVisitor {
