@@ -66,9 +66,10 @@ impl<S: SearchState> Node<S> {
         self.data.as_mut().unwrap()
     }
 
-    fn update_stats(&mut self, sims: u64, sum_scores: u64) {
+    fn update_stats(&mut self, sims: u64, sum_scores: u64, max_score: u64) {
         self.sum_scores += sum_scores;
         self.num_sims += sims;
+        self.max_score = self.max_score.max(max_score);
     }
 
     fn uct(&self, parent_sims: u64, max_score: u64, exploration: f64) -> f64 {
@@ -271,10 +272,10 @@ where S::Action: Clone {
     fn backprop(&mut self, score: u64, path: &Path) {
         let mut node_idx = self.root_idx;
         for &child_idx in path {
-            self.nodes[node_idx].update_stats(/*sims=*/1, score);
+            self.nodes[node_idx].update_stats(/*sims=*/1, score, /*max_score=*/score);
             node_idx = self.nodes[node_idx].data().children[child_idx].node_idx;
         }
-        self.nodes[node_idx].update_stats(/*sims=*/1, score);
+        self.nodes[node_idx].update_stats(/*sims=*/1, score, /*max_score=*/score);
     }
 
     /// Select child index with the best UCT score.
