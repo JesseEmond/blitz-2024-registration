@@ -16,6 +16,7 @@ const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     exploration_multiplier: 1.0,
     // TODO: try full random playthrough % instead?
     random_action_prob: 0.05,
+    uncertainty_d: 10000.0,
 };
 const MCTS_BUDGET: Duration = Duration::from_millis(600);
 

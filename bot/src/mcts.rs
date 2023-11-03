@@ -10,6 +10,8 @@ use crate::search::SearchState;
 pub struct MCTSOptions {
     pub exploration_multiplier: f64,
     pub random_action_prob: f32,
+    // 'D' in https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
+    pub uncertainty_d: f64,
 }
 
 type NodeIdx = usize;
@@ -32,6 +34,7 @@ struct Node<S: SearchState> {
     /// Max possible score seen in this branch, used to normalize scores for UCT.
     max_score: u64,
     sum_scores: u64,
+    sum_squared_scores: u64,
     num_sims: u64,
     skipped: bool,
 }
@@ -43,6 +46,7 @@ impl<S: SearchState> Node<S> {
             fully_expanded: false,
             max_score,
             sum_scores: 0,
+            sum_squared_scores: 0,
             num_sims: 0,
             skipped: false,
         }
@@ -66,22 +70,25 @@ impl<S: SearchState> Node<S> {
         self.data.as_mut().unwrap()
     }
 
-    fn update_stats(&mut self, sims: u64, sum_scores: u64, max_score: u64) {
-        self.sum_scores += sum_scores;
-        self.num_sims += sims;
-        self.max_score = self.max_score.max(max_score);
+    fn update_stats(&mut self, score: u64) {
+        self.sum_scores += score;
+        self.sum_squared_scores += score * score;
+        self.num_sims += 1;
+        self.max_score = self.max_score.max(score);
     }
 
-    fn uct(&self, parent_sims: u64, max_score: u64, exploration: f64) -> f64 {
+    fn uct(&self, parent_sims: u64, max_score: u64, exploration: f64, uncertainty_d: f64) -> f64 {
         if self.skipped { return 0.0; }
         assert!(self.num_sims > 0);
-        // TODO try single player MCTS UCT?
-        // https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
         // Treat our win ratio as the sum of total scores normalized by the max
         // possible score (times the number of sims).
         let win_ratio = self.sum_scores as f64 / (self.num_sims * max_score) as f64;
         let c: f64 = exploration * 2.0_f64.sqrt();
-        win_ratio + c * ((parent_sims as f64).ln() / (self.num_sims as f64)).sqrt()
+        let uct = win_ratio + c * ((parent_sims as f64).ln() / (self.num_sims as f64)).sqrt();
+        // https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
+        let sp_uct = ((self.sum_squared_scores as f64 - self.num_sims as f64
+                       * win_ratio * win_ratio + uncertainty_d) / (self.num_sims as f64)).sqrt();
+        uct + sp_uct
     }
 }
 
@@ -275,10 +282,10 @@ where S::Action: Clone {
     fn backprop(&mut self, score: u64, path: &Path) {
         let mut node_idx = self.root_idx;
         for &child_idx in path {
-            self.nodes[node_idx].update_stats(/*sims=*/1, score, /*max_score=*/score);
+            self.nodes[node_idx].update_stats(score);
             node_idx = self.nodes[node_idx].data().children[child_idx].node_idx;
         }
-        self.nodes[node_idx].update_stats(/*sims=*/1, score, /*max_score=*/score);
+        self.nodes[node_idx].update_stats(score);
     }
 
     /// Select child index with the best UCT score.
@@ -286,13 +293,14 @@ where S::Action: Clone {
                 noise_rng: &mut impl Rng) -> ChildIdx {
         let parent_max_score = self.nodes[parent_idx].max_score;
         let parent_sims = self.nodes[parent_idx].num_sims;
+        let d = self.options.uncertainty_d;
         let max_uct = self.nodes[parent_idx].data().children.iter()
-            .map(|c| self.nodes[c.node_idx].uct(parent_sims, parent_max_score, exploration))
+            .map(|c| self.nodes[c.node_idx].uct(parent_sims, parent_max_score, exploration, d))
             .max_by(|u1, u2| u1.partial_cmp(u2).unwrap())
             .unwrap();
         let options: Vec<ChildIdx> = self.nodes[parent_idx].data().children.iter().enumerate()
             .filter(|(_, c)| self.nodes[c.node_idx].uct(
-                    parent_sims, parent_max_score, exploration) == max_uct)
+                    parent_sims, parent_max_score, exploration, d) == max_uct)
             .map(|(idx, _)| idx).collect();
         *options.choose(noise_rng).unwrap()
 
