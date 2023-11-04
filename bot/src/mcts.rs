@@ -37,7 +37,6 @@ struct Node<S: SearchState> {
     sum_scores: u64,
     sum_squared_scores: u64,
     num_sims: u64,
-    skipped: bool,
 }
 
 impl<S: SearchState> Node<S> {
@@ -49,7 +48,6 @@ impl<S: SearchState> Node<S> {
             sum_scores: 0,
             sum_squared_scores: 0,
             num_sims: 0,
-            skipped: false,
         }
     }
 
@@ -79,7 +77,6 @@ impl<S: SearchState> Node<S> {
     }
 
     fn uct(&self, parent_sims: u64, max_score: u64, exploration: f64, uncertainty_d: f64) -> f64 {
-        if self.skipped { return 0.0; }
         assert!(self.num_sims > 0);
         // Treat our win ratio as the sum of total scores normalized by the max
         // possible score (times the number of sims).
@@ -104,8 +101,6 @@ pub struct MCTS<S: SearchState> {
     free_list: Vec<NodeIdx>,
     options: MCTSOptions,
     rounds: usize,
-    seen_hashes: HashSet<u64>,
-    skipped_rounds: usize,  // rounds we skipped thanks to hashes
     pub best_seen_score: u64,
     best_path: Path,
 }
@@ -120,8 +115,6 @@ where S::Action: Clone {
             options,
             root_idx: 0,
             rounds: 0,
-            skipped_rounds: 0,
-            seen_hashes: HashSet::new(),
             best_seen_score: 0,
             best_path: Path::new(),
         }
@@ -146,12 +139,6 @@ where S::Action: Clone {
         let (mut path, leaf_idx) = self.select_node(&mut state, noise_rng);
         let node_idx = self.expand_node(&mut state, leaf_idx, &mut path);
         self.rounds += 1;
-        // TODO: re-enable, but clear on next_action?
-        // if !self.seen_hashes.insert(state.transposition_hash()) {
-        //     self.skipped_rounds += 1;
-        //     self.nodes[node_idx].skipped = true;
-        //     return;  // Already played out this state -- skip it
-        // }
         let score = self.playout(&mut state, node_idx, &mut path, noise_rng);
         self.backprop(score, &path);
         if self.options.print_every_n_rounds.is_some() && self.rounds % self.options.print_every_n_rounds.unwrap() == 0 {
@@ -280,8 +267,7 @@ where S::Action: Clone {
         }
         // TODO verbose setting
         if score > self.best_seen_score {
-            println!("Score: {} ({} rounds ({} skipped))", score, self.rounds,
-                     self.skipped_rounds);
+            println!("Score: {} ({} rounds)", score, self.rounds);
             self.best_seen_score = score;
             self.best_path = current_path;
         }
