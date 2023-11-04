@@ -31,7 +31,7 @@ fn main() {
         let random = GameRandom::new(SeedRandom::from_seed(&seed));
         let mut planner = Planner::new(first_id, &cannon, &constants, random);
         while !planner.is_done() {
-            if planner.game_state.tick % 100 == 0 {
+            if planner.game_state.tick % 50 == 0 {
                 println!("Tick: {}", planner.game_state.tick);
             }
             planner.next_action();

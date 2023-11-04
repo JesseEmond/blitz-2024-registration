@@ -13,6 +13,7 @@ import nostradamus
 class Bot:
     def __init__(self, on_server: bool):
         self.verbose = on_server
+        print(f'Verbose: {self.verbose}')
         self.nostradamus = None
 
     def info(self, s: str) -> None:
@@ -23,6 +24,7 @@ class Bot:
         assert not game.lastTickErrors,\
             f'Errors during last tick : {game.lastTickErrors}'
         start_time = time.time()
+        self.info(f'Tick: {game.tick}')
 
         if not self.nostradamus:
             self.nostradamus = nostradamus.Nostradamus(

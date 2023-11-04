@@ -12,6 +12,7 @@ pub struct MCTSOptions {
     pub random_action_prob: f32,
     // 'D' in https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
     pub uncertainty_d: f64,
+    pub print_every_n_rounds: Option<usize>,
 }
 
 type NodeIdx = usize;
@@ -134,8 +135,10 @@ where S::Action: Clone {
             rounds += 1;
         }
         let duration = start.elapsed();
-        // TODO verbose setting
-        // println!("Ran {} rounds in {:?}", rounds, duration);
+        if self.options.print_every_n_rounds.is_some() {
+            println!("Ran {} rounds in {:?}", rounds, duration);
+        }
+
     }
 
     pub fn run_round(&mut self, noise_rng: &mut impl Rng) {
@@ -143,13 +146,19 @@ where S::Action: Clone {
         let (mut path, leaf_idx) = self.select_node(&mut state, noise_rng);
         let node_idx = self.expand_node(&mut state, leaf_idx, &mut path);
         self.rounds += 1;
-        if !self.seen_hashes.insert(state.transposition_hash()) {
-            self.skipped_rounds += 1;
-            self.nodes[node_idx].skipped = true;
-            return;  // Already played out this state -- skip it
-        }
+        // TODO: re-enable, but clear on next_action?
+        // if !self.seen_hashes.insert(state.transposition_hash()) {
+        //     self.skipped_rounds += 1;
+        //     self.nodes[node_idx].skipped = true;
+        //     return;  // Already played out this state -- skip it
+        // }
         let score = self.playout(&mut state, node_idx, &mut path, noise_rng);
         self.backprop(score, &path);
+        if self.options.print_every_n_rounds.is_some() && self.rounds % self.options.print_every_n_rounds.unwrap() == 0 {
+            println!("Rounds: {}, best score: {}, nodes: {} ({} free)",
+                     self.rounds, self.best_seen_score, self.nodes.len(),
+                     self.free_list.len());
+        }
     }
 
     pub fn best_actions_sequence(&self) -> Vec<S::Action> {

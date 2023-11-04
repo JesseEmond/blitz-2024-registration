@@ -17,8 +17,12 @@ const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     // TODO: try full random playthrough % instead?
     random_action_prob: 0.05,
     uncertainty_d: 10000.0,
+    print_every_n_rounds: Some(50),
 };
-const MCTS_BUDGET: Duration = Duration::from_millis(600);
+const MCTS_BUDGET: Duration = Duration::from_millis(500);
+// Max aiming options added to actions for a single meteor.
+// (Note: impossible aiming options aren't counted)
+const NUM_SHOOTING_AIM_OPTIONS: usize = 1;
 
 /// Events at the time where the client would see them (i.e. the tick after
 /// they happened). Note that we move forward the meteors in EventInfos by one
@@ -190,7 +194,10 @@ impl<'a> SearcherState<'a> {
                 size: self.constants.get_meteor_info(meteor_vision.meteor.typ).size,
             };
             let cannon_pos: Vec2 = self.cannon.position.into();
-            for aim in get_aim_options(&cannon_pos, self.constants.rockets.speed, &target) {
+            let mut shooting_options_taken = 0;
+            for aim in get_aim_options(
+                &cannon_pos, self.constants.rockets.speed,
+                self.constants.rockets.size, &target) {
                 let mut shot = TentativeShot {
                     aim: &aim,
                     cannon: self.cannon,
@@ -216,7 +223,10 @@ impl<'a> SearcherState<'a> {
                     } else {
                         backup_actions.push(action);
                     }
-                    break;  // don't consider other shooting options
+                    shooting_options_taken += 1;
+                    if shooting_options_taken >= NUM_SHOOTING_AIM_OPTIONS {
+                        break;  // don't consider other shooting options
+                    }
                 }
             }
         }
@@ -505,9 +515,10 @@ fn spawn_delta_t(vision: &MeteorVision, current_tick: Tick) -> Tick {
 fn ticks_until_unshootable(vision: &MeteorVision, cannon: &Cannon,
                            constants: &Constants, current_tick: Tick) -> Tick {
     let size = constants.get_meteor_info(vision.meteor.typ).size;
-    let min_x = cannon.position.x - size;
+    let min_x = cannon.position.x - size - constants.rockets.size;
     let remaining_x = vision.meteor.pos.x - min_x;
-    assert!(remaining_x >= 0.0);
+    assert!(remaining_x >= 0.0, "Meteor x too small: {:?}, min_x: {}", vision,
+            min_x);
     assert!(vision.meteor.vel.x <= 0.0);
     let ticks_x = if vision.meteor.vel.x < 0.0 { remaining_x / (-vision.meteor.vel.x) } else { f64::MAX };
     let ticks_y = if vision.meteor.vel.y > 0.0 {

@@ -40,15 +40,19 @@ pub fn aim_ahead(source: &Vec2, rocket_speed: f64, target: &MovingCircle) -> Opt
 /// Possible aiming points to hit a target.
 /// Aiming at when the center collides is not always the faster hit, and
 /// sometimes not possible while other hits are possible.
-pub fn get_aim_options(source: &Vec2, rocket_speed: f64,
+pub fn get_aim_options(source: &Vec2, rocket_speed: f64, rocket_size: f64,
                        target: &MovingCircle) -> Vec<Vec2> {
-    // TODO: need -1?
     let offset = target.size - 1.0;  // -1 to have some leeway in collision handling
-    let offset_options = vec![
+    let large_offset = offset + rocket_size;
+    let mut offset_options = vec![
         // aim at center
         Vec2::new(0.0, 0.0),
-        // aim at left side (potentially earliest)
-        Vec2::new(-offset, 0.0),
+        // aim at the top side
+        Vec2::new(0.0, -large_offset),
+        // aim at the bottom side
+        Vec2::new(0.0, large_offset),
+        // aim at right size (e.g. hit a meteor before it disappears)
+        Vec2::new(large_offset, 0.0),
         // aim at the top side
         Vec2::new(0.0, -offset),
         // aim at the bottom side

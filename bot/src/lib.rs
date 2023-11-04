@@ -1,3 +1,4 @@
+extern crate memory_stats;
 extern crate pyo3;
 extern crate rc4;
 extern crate serde;
@@ -49,6 +50,13 @@ impl Nostradamus {
     }
 
     pub fn next_action(&mut self) -> Vec<PlanEvent> {
+        if let Some(usage) = memory_stats::memory_stats() {
+            let phys_mb = usage.physical_mem / 1024 / 1024;
+            let virt_mb = usage.virtual_mem / 1024 / 1024;
+            println!("MEMORY USAGE: {}MB phys, {}MB virt", phys_mb, virt_mb);
+        } else {
+            println!("MEMORY USAGE: (failed to obtain)");
+        }
         self.planner.next_action().iter().map(|&e| PlanEvent(e)).collect()
     }
 }
