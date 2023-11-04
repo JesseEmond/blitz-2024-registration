@@ -1,5 +1,4 @@
 // Search specific to performing Monte Carlo Tree Search (MCTS).
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use rand::Rng;
@@ -13,6 +12,7 @@ pub struct MCTSOptions {
     // 'D' in https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
     pub uncertainty_d: f64,
     pub print_every_n_rounds: Option<usize>,
+    pub reset_after_n_nodes: Option<usize>,
 }
 
 type NodeIdx = usize;
@@ -33,14 +33,14 @@ struct Node<S: SearchState> {
     data: Option<NodeData<S>>,
     fully_expanded: bool,
     /// Max possible score seen in this branch, used to normalize scores for UCT.
-    max_score: u64,
-    sum_scores: u64,
+    max_score: u32,
+    sum_scores: u32,
     sum_squared_scores: u64,
-    num_sims: u64,
+    num_sims: u32,
 }
 
 impl<S: SearchState> Node<S> {
-    fn new(max_score: u64) -> Self {
+    fn new(max_score: u32) -> Self {
         Self {
             data: None,
             fully_expanded: false,
@@ -69,14 +69,14 @@ impl<S: SearchState> Node<S> {
         self.data.as_mut().unwrap()
     }
 
-    fn update_stats(&mut self, score: u64) {
+    fn update_stats(&mut self, score: u32) {
         self.sum_scores += score;
-        self.sum_squared_scores += score * score;
+        self.sum_squared_scores += (score * score) as u64;
         self.num_sims += 1;
         self.max_score = self.max_score.max(score);
     }
 
-    fn uct(&self, parent_sims: u64, max_score: u64, exploration: f64, uncertainty_d: f64) -> f64 {
+    fn uct(&self, parent_sims: u32, max_score: u32, exploration: f64, uncertainty_d: f64) -> f64 {
         assert!(self.num_sims > 0);
         // Treat our win ratio as the sum of total scores normalized by the max
         // possible score (times the number of sims).
@@ -101,7 +101,7 @@ pub struct MCTS<S: SearchState> {
     free_list: Vec<NodeIdx>,
     options: MCTSOptions,
     rounds: usize,
-    pub best_seen_score: u64,
+    pub best_seen_score: u32,
     best_path: Path,
 }
 
@@ -135,6 +135,12 @@ where S::Action: Clone {
     }
 
     pub fn run_round(&mut self, noise_rng: &mut impl Rng) {
+        if self.options.reset_after_n_nodes.is_some() && self.nodes.len() >= self.options.reset_after_n_nodes.unwrap() {
+            self.nodes.clear();
+            self.nodes.push(Node::new(/*max_score=*/1));
+            self.root_idx = 0;
+            self.free_list.clear();
+        }
         let mut state = self.start_state.clone();
         let (mut path, leaf_idx) = self.select_node(&mut state, noise_rng);
         let node_idx = self.expand_node(&mut state, leaf_idx, &mut path);
@@ -146,24 +152,6 @@ where S::Action: Clone {
                      self.rounds, self.best_seen_score, self.nodes.len(),
                      self.free_list.len());
         }
-    }
-
-    pub fn best_actions_sequence(&self) -> Vec<S::Action> {
-        let mut actions = Vec::new();
-        let mut node_idx = self.root_idx;
-        for &child_idx in &self.best_path {
-            let child = &self.nodes[node_idx].data().children[child_idx];
-            actions.push(child.action.clone());
-            node_idx = child.node_idx;
-        }
-        actions
-    }
-
-    pub fn best_action(&self) -> S::Action {
-        let child_idx = self.best_uct(
-            self.root_idx, /*exploration_multiplier=*/0.0,
-            &mut rand::thread_rng());
-        self.nodes[self.root_idx].data().children[child_idx].action.clone()
     }
 
     pub fn pick_best_action(&mut self) -> Option<S::Action> {
@@ -241,7 +229,7 @@ where S::Action: Clone {
     }
 
     fn playout(&mut self, state: &mut S, node_idx: NodeIdx, path: &mut Path,
-               noise_rng: &mut impl Rng) -> u64 {
+               noise_rng: &mut impl Rng) -> u32 {
         let mut current_path = path.clone();
         let mut node_idx = node_idx;
         while !state.is_final() {
@@ -274,7 +262,7 @@ where S::Action: Clone {
         score
     }
 
-    fn backprop(&mut self, score: u64, path: &Path) {
+    fn backprop(&mut self, score: u32, path: &Path) {
         let mut node_idx = self.root_idx;
         for &child_idx in path {
             self.nodes[node_idx].update_stats(score);
@@ -301,7 +289,7 @@ where S::Action: Clone {
 
     }
 
-    fn new_node(&mut self, max_score: u64) -> (NodeIdx, &mut Node<S>) {
+    fn new_node(&mut self, max_score: u32) -> (NodeIdx, &mut Node<S>) {
         let idx = if let Some(idx) = self.free_list.pop() {
             // The node's children are now in the free list.
             if self.nodes[idx].is_generated() {

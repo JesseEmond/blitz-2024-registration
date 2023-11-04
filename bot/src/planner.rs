@@ -17,9 +17,10 @@ const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     // TODO: try full random playthrough % instead?
     random_action_prob: 0.05,
     uncertainty_d: 10000.0,
-    print_every_n_rounds: Some(50),
+    print_every_n_rounds: Some(500),
+    reset_after_n_nodes: Some(3250000),
 };
-const MCTS_BUDGET: Duration = Duration::from_millis(500);
+const MCTS_BUDGET: Duration = Duration::from_millis(800);
 // Max aiming options added to actions for a single meteor.
 // (Note: impossible aiming options aren't counted)
 const NUM_SHOOTING_AIM_OPTIONS: usize = 1;
@@ -131,7 +132,7 @@ impl<'a> Planner<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Shoot {
-        aim: Vec2, target_id: Id, predicted_hits: Vec<Id>,
+        aim: Vec2, target_id: Id, override_predicted_hits: Option<Vec<Id>>,
         potential_score: Score, ticks_until_unshootable: Tick,
     },
     Hold { potential_score: Score, },
@@ -207,13 +208,14 @@ impl<'a> SearcherState<'a> {
                 };
                 if let Some(results) = shot.get_result(self.random.clone()) {
                     let as_expected = results.as_predicted(&self.predicted_hits);
+                    let override_hits = if as_expected { None } else { Some(results.hits) };
                     let action = Action::Shoot {
                         // Note: deliberately using pre-increment ID here.
                         // apply_actions will update it.
                         target_id: meteor_vision.meteor.id,
                         aim,
                         potential_score: results.score,
-                        predicted_hits: results.hits,
+                        override_predicted_hits: override_hits,
                         ticks_until_unshootable: ticks_until_unshootable(
                             meteor_vision, self.cannon, self.constants,
                             self.state.tick),
@@ -246,9 +248,14 @@ impl<'a> SearcherState<'a> {
         Action::Hold { potential_score: state.score }
     }
 
-    fn apply_shot(&mut self, aim: &Vec2, target_id: Id) {
-        self.state.shoot(self.cannon, self.constants, aim, target_id)
+    fn apply_shot(&mut self, aim: &Vec2, target_id: Id) -> Id {
+        let shoot_event = self.state.shoot(
+            self.cannon, self.constants, aim, target_id)
             .expect("could not shoot");
+        match shoot_event {
+            EventInfo::Shoot { id, .. } => id,
+            _ => panic!("non-shoot event after shotting"),
+        }
     }
 }
 
@@ -269,10 +276,19 @@ impl SearchState for SearcherState<'_> {
             Action::Hold { potential_score } => {
                 self.potential_score = *potential_score;
             },
-            Action::Shoot { aim, potential_score, predicted_hits, target_id, .. } => {
+            Action::Shoot { aim, potential_score, override_predicted_hits, target_id, .. } => {
                 self.potential_score = *potential_score;
-                self.predicted_hits = predicted_hits.clone();
-                self.apply_shot(aim, *target_id);
+                let rocket_id = self.apply_shot(aim, *target_id);
+                if let Some(override_hits) = override_predicted_hits {
+                    self.predicted_hits = override_hits.clone();
+                } else {
+                    self.predicted_hits.push(*target_id);
+                    for id in self.predicted_hits.iter_mut() {
+                        if *id >= rocket_id {
+                            *id += 1;
+                        }
+                    }
+                }
             },
         }
         self.run_one_tick();
@@ -282,11 +298,11 @@ impl SearchState for SearcherState<'_> {
         self.state.is_done()
     }
 
-    fn theoretical_max(&self) -> u64 {
+    fn theoretical_max(&self) -> u32 {
         self.potential_score.into()
     }
 
-    fn evaluate(&self) -> u64 {
+    fn evaluate(&self) -> u32 {
         self.state.score.into()
     }
 

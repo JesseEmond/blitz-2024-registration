@@ -6,8 +6,8 @@ pub trait SearchState {
     fn generate_actions(&self) -> Vec<Self::Action>;
     fn apply_action(&mut self, action: &Self::Action);
     fn is_final(&self) -> bool;
-    fn evaluate(&self) -> u64;  // higher is better
-    fn theoretical_max(&self) -> u64;  // higher is better
+    fn evaluate(&self) -> u32;  // higher is better
+    fn theoretical_max(&self) -> u32;  // higher is better
 
     // Mostly a debugging tool, to check how many states in our beam are dupes.
     fn is_equivalent(&self, other: &Self) -> bool;
@@ -15,7 +15,7 @@ pub trait SearchState {
     // States that have the same hash will be skipped.
     fn transposition_hash(&self) -> u64;
 
-    fn heuristic(&self) -> u64 {
+    fn heuristic(&self) -> u32 {
         self.theoretical_max()
     }
 
@@ -38,8 +38,8 @@ impl<S> Node<S> where S: SearchState {
 pub struct BeamSearch<S: SearchState> {
     beam: Vec<Node<S>>,
     seen_hashes: HashSet<u64>,
-    pub best_heuristic: u64,
-    pub best_evaluation: u64,
+    pub best_heuristic: u32,
+    pub best_evaluation: u32,
 }
 
 impl<S: SearchState + Clone> BeamSearch<S> 

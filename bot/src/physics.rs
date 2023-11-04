@@ -44,7 +44,7 @@ pub fn get_aim_options(source: &Vec2, rocket_speed: f64, rocket_size: f64,
                        target: &MovingCircle) -> Vec<Vec2> {
     let offset = target.size - 1.0;  // -1 to have some leeway in collision handling
     let large_offset = offset + rocket_size;
-    let mut offset_options = vec![
+    let offset_options = vec![
         // aim at center
         Vec2::new(0.0, 0.0),
         // aim at the top side
