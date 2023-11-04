@@ -277,13 +277,14 @@ where S::Action: Clone {
         let parent_max_score = self.nodes[parent_idx].max_score;
         let parent_sims = self.nodes[parent_idx].num_sims;
         let d = self.options.uncertainty_d;
+        const EQ_EPS: f64 = 1e-10;
         let max_uct = self.nodes[parent_idx].data().children.iter()
             .map(|c| self.nodes[c.node_idx].uct(parent_sims, parent_max_score, exploration, d))
             .max_by(|u1, u2| u1.partial_cmp(u2).unwrap())
             .unwrap();
         let options: Vec<ChildIdx> = self.nodes[parent_idx].data().children.iter().enumerate()
-            .filter(|(_, c)| self.nodes[c.node_idx].uct(
-                    parent_sims, parent_max_score, exploration, d) == max_uct)
+            .filter(|(_, c)| (self.nodes[c.node_idx].uct(
+                    parent_sims, parent_max_score, exploration, d) - max_uct).abs() < EQ_EPS)
             .map(|(idx, _)| idx).collect();
         *options.choose(noise_rng).unwrap()
 
