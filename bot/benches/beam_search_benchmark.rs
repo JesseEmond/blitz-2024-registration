@@ -8,7 +8,7 @@ use nostradamus::search::BeamSearch;
 use nostradamus::simulate::GameState;
 
 /// BeamSearch benchmarking on the 'Stardreamer' seed
-fn beam_search_stardreamer() -> u64 {
+fn beam_search_stardreamer() -> u32 {
     let rng = GameRandom::new(SeedRandom::from_seed(b"Stardreamer"));
     let (constants, cannon) = default_game_settings();
     let state = GameState::new(/*first_id=*/0);

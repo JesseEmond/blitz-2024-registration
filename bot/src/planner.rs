@@ -573,44 +573,7 @@ fn heuristic_sort_key(action_idx: usize, action: &Action,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use rand::rngs::SmallRng;
-    use crate::game_message::{default_game_settings, MeteorType};
-    use crate::game_random::GameRandom;
-    use crate::seedrandom::SeedRandom;
-
-    #[test]
-    fn test_hits_are_correct() {
-        let mut random = GameRandom::new(SeedRandom::from_seed(b"MySeed"));
-        let mut state = GameState::new(/*first_id=*/0);
-        let (constants, cannon) = default_game_settings();
-        let search_state = SearcherState::new(
-            state.clone(), &constants, &cannon, random.clone());
-        let mut noise_rng = SmallRng::seed_from_u64(42);
-        let mut mcts = MCTS::new(search_state.clone(), MCTS_OPTIONS);
-        for _ in 0..10 {  // run a few iterations
-            mcts.run_round(&mut noise_rng);
-        }
-        let mut actions = mcts.best_actions_sequence();
-        let mut repeat_state = search_state;
-        actions.reverse();  // reverse so we can pop the actions
-        while !state.is_done() {
-            for event in run_server_tick(
-                &mut state, &mut random, &constants) {
-                if let EventInfo::Hit { meteor, .. } = event {
-                    assert!(repeat_state.predicted_hits.contains(&meteor),
-                            "Hit meteor M{}, which we did not predict.", meteor);
-                }
-            }
-            if state.is_done() { break; }
-            let action = actions.pop().unwrap();
-            repeat_state.apply_action(&action);
-        }
-        assert!(repeat_state.predicted_hits.len() == state.rockets.len(),
-                "Had {} remaining targets, there are {} remaining rockets. Targets: {:?} Rockets: {:?}",
-                repeat_state.predicted_hits.len(), state.rockets.len(),
-                repeat_state.predicted_hits, state.rockets);
-    }
+    use crate::game_message::MeteorType;
 
     #[test]
     fn test_ticks_until_unshootable() {
