@@ -16,11 +16,11 @@ const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     exploration_multiplier: 1.0,
     // TODO: try full random playthrough % instead?
     random_action_prob: 0.05,
-    uncertainty_d: 10000.0,
-    print_every_n_rounds: Some(500),
-    reset_after_n_nodes: Some(3250000),
+    uncertainty_d: 10.0,
+    print_every_n_rounds: Some(800),
+    reset_after_n_nodes: Some(500000),  // TODO: more frequent?
 };
-const MCTS_BUDGET: Duration = Duration::from_millis(800);
+const MCTS_BUDGET: Duration = Duration::from_millis(500);
 // Max aiming options added to actions for a single meteor.
 // (Note: impossible aiming options aren't counted)
 const NUM_SHOOTING_AIM_OPTIONS: usize = 1;

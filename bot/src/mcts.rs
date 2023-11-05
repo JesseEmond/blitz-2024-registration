@@ -78,14 +78,27 @@ impl<S: SearchState> Node<S> {
 
     fn uct(&self, parent_sims: u32, max_score: u32, exploration: f64, uncertainty_d: f64) -> f64 {
         assert!(self.num_sims > 0);
+        assert!(max_score > 0);
+        assert!(max_score * self.num_sims >= self.sum_scores);
+        assert!(max_score as u64 * max_score as u64 * self.num_sims as u64
+                >= self.sum_squared_scores);
         // Treat our win ratio as the sum of total scores normalized by the max
-        // possible score (times the number of sims).
+        // possible score, to get a [0, 1] value.
         let win_ratio = self.sum_scores as f64 / (self.num_sims * max_score) as f64;
+        assert!(win_ratio >= 0.0 && win_ratio <= 1.0,
+                "win ratio: {}, sum scores: {}, sims: {}, max score: {}",
+                win_ratio, self.sum_scores, self.num_sims, max_score);
         let c: f64 = exploration * 2.0_f64.sqrt();
         let uct = win_ratio + c * ((parent_sims as f64).ln() / (self.num_sims as f64)).sqrt();
+        assert!(!uct.is_nan(), "win ratio: {}, sum: {}, sims: {}, max score: {}, parent sims: {}",
+                win_ratio, self.sum_scores, self.num_sims, max_score, parent_sims);
         // https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf
-        let sp_uct = ((self.sum_squared_scores as f64 - self.num_sims as f64
-                       * win_ratio * win_ratio + uncertainty_d) / (self.num_sims as f64)).sqrt();
+        let sum_square = self.sum_squared_scores as f64 / (max_score * max_score) as f64;
+        let sp_uct = ((sum_square - self.num_sims as f64 * win_ratio * win_ratio + uncertainty_d)
+                      / (self.num_sims as f64)).sqrt();
+        assert!(!sp_uct.is_nan(),
+                "sum(x^2): {}, sims: {}, sum sq: {}, max score: {} win ratio: {}, sum scores: {}",
+                sum_square, self.num_sims, self.sum_squared_scores, max_score, win_ratio, self.sum_scores);
         uct + sp_uct
     }
 }
@@ -286,7 +299,12 @@ where S::Action: Clone {
             .filter(|(_, c)| (self.nodes[c.node_idx].uct(
                     parent_sims, parent_max_score, exploration, d) - max_uct).abs() < EQ_EPS)
             .map(|(idx, _)| idx).collect();
-        *options.choose(noise_rng).unwrap()
+        *options.choose(noise_rng).expect(
+            &format!("num_children: {}, max_uct: {}, uct values: {:?}",
+                     self.nodes[parent_idx].data().children.len(), max_uct,
+                     self.nodes[parent_idx].data().children.iter()
+                         .map(|c| self.nodes[c.node_idx].uct(parent_sims, parent_max_score, exploration, d))
+                         .collect::<Vec<f64>>()))
 
     }
 
