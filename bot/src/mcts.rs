@@ -34,7 +34,7 @@ struct Node<S: SearchState> {
     fully_expanded: bool,
     /// Max possible score seen in this branch, used to normalize scores for UCT.
     max_score: u32,
-    sum_scores: u32,
+    sum_scores: u64,
     sum_squared_scores: u64,
     num_sims: u32,
 }
@@ -70,7 +70,7 @@ impl<S: SearchState> Node<S> {
     }
 
     fn update_stats(&mut self, score: u32) {
-        self.sum_scores += score;
+        self.sum_scores += score as u64;
         self.sum_squared_scores += (score * score) as u64;
         self.num_sims += 1;
         self.max_score = self.max_score.max(score);
@@ -79,7 +79,9 @@ impl<S: SearchState> Node<S> {
     fn uct(&self, parent_sims: u32, max_score: u32, exploration: f64, uncertainty_d: f64) -> f64 {
         assert!(self.num_sims > 0);
         assert!(max_score > 0);
-        assert!(max_score * self.num_sims >= self.sum_scores);
+        assert!(max_score as u64 * self.num_sims as u64 >= self.sum_scores,
+                "max_score: {}, sims: {}, sum scores: {}",
+                max_score, self.num_sims, self.sum_scores);
         assert!(max_score as u64 * max_score as u64 * self.num_sims as u64
                 >= self.sum_squared_scores);
         // Treat our win ratio as the sum of total scores normalized by the max
