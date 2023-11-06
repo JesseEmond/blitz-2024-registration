@@ -9,7 +9,7 @@ use crate::game_random::GameRandom;
 use crate::mcts::{MCTS, MCTSOptions};
 use crate::physics::{get_aim_options, MovingCircle};
 use crate::search::SearchState;
-use crate::simulate::{max_rocket_x, run_server_tick, EventInfo, GameState, Meteor};
+use crate::simulate::{max_rocket_x, resolve_simulation, run_server_tick, EventInfo, GameState, Meteor};
 use crate::vec2::Vec2;
 
 const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
@@ -405,13 +405,20 @@ impl TentativeShot <'_> {
     /// Returns the ending score and meteor hit IDs.
     fn resolve_simulation(&mut self, mut rng: GameRandom) -> (Score, Vec<Id>) {
         let mut hits = Vec::new();
+        let resolved = resolve_simulation(&self.state, rng.clone(), self.constants);
+        let mut events = Vec::new();
         while !self.state.is_done() && !self.state.rockets.is_empty() {
             for event in run_server_tick(&mut self.state, &mut rng, self.constants) {
                 if let EventInfo::Hit { meteor, .. } = event {
                     hits.push(meteor);
                 }
+                events.push(event);
             }
         }
+        assert_eq!(resolved.meteor_hits, hits, "Events:\n{}",
+                   events.iter().map(|e| format!("- {:?}", e))
+                       .collect::<Vec<String>>().join("\n"));
+        assert_eq!(resolved.score, self.state.score);
         (self.state.score, hits)
     }
 }

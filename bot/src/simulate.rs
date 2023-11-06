@@ -55,6 +55,7 @@ impl Rocket {
     }
 }
 
+#[derive(Debug)]
 struct Collision {
     // Note: indices are only valid during collision handling (before Vecs are
     // changed to remove destroyed rockets/meteors).
@@ -105,24 +106,11 @@ impl ServerSimulation<'_> {
     }
 
     fn rocket_collisions(&self, rocket_idx: usize) -> Vec<Collision> {
-        self.state.meteors.iter().enumerate().filter_map(move |(idx, meteor)| {
-            let rocket = &self.state.rockets[rocket_idx];
-            let rocket = MovingCircle {
-                pos: rocket.pos, vel: rocket.vel, size: self.constants.rockets.size
-            };
-            let meteor = MovingCircle {
-                pos: meteor.pos, vel: meteor.vel,
-                size: self.constants.get_meteor_info(meteor.typ).size
-            };
-            let (t1, t2) = collision_times(&rocket, &meteor)?;
-            if t1 < 0.0 && t2 < 0.0 { return None; }
-            // Min time if both are positive, else the positive one.
-            let t = if t1 >= 0.0 && t2 >= 0.0 { t1.min(t2) } else { t1.max(t2) };
-            if t <= 1.0 {
-                Some(Collision { meteor_idx: idx, rocket_idx: rocket_idx, t })
-            } else {
-                None
-            }
+        self.state.meteors.iter().enumerate().filter_map(move |(meteor_idx, _)| {
+            rocket_meteor_collision(rocket_idx, &self.state.rockets[rocket_idx],
+                                    meteor_idx, &self.state.meteors[meteor_idx],
+                                    self.constants)
+                .filter(|c| c.t <= 1.0)
         }).collect()
     }
 
@@ -201,9 +189,8 @@ impl ServerSimulation<'_> {
 
     fn spawn_meteor(&mut self) -> EventInfo {
         let spawn = self.rng.next_spawn(self.constants);
-        let id = self.state.get_next_id();
         let typ = MeteorType::Large;
-        self.state.meteors.push(Meteor::new(id, spawn.pos, spawn.vel, typ));
+        let id = self.state.add_meteor(spawn.pos, spawn.vel, typ);
         EventInfo::MeteorSpawn {
             id,
             pos: spawn.pos,
@@ -211,6 +198,29 @@ impl ServerSimulation<'_> {
             typ,
         }
     }
+}
+
+pub struct ResolvedState {
+    pub meteor_hits: Vec<Id>,
+    pub score: Score,
+    pub tick: Tick,
+}
+
+fn rocket_meteor_collision(rocket_idx: usize, rocket: &Rocket,
+                           meteor_idx: usize, meteor: &Meteor,
+                           constants: &Constants) -> Option<Collision> {
+    let rocket = MovingCircle {
+        pos: rocket.pos, vel: rocket.vel, size: constants.rockets.size
+    };
+    let meteor = MovingCircle {
+        pos: meteor.pos, vel: meteor.vel,
+        size: constants.get_meteor_info(meteor.typ).size
+    };
+    let (t1, t2) = collision_times(&rocket, &meteor)?;
+    if t1 < 0.0 && t2 < 0.0 { return None; }
+    // Min time if both are positive, else the positive one.
+    let t = if t1 >= 0.0 && t2 >= 0.0 { t1.min(t2) } else { t1.max(t2) };
+    Some(Collision { meteor_idx, rocket_idx, t })
 }
 
 impl GameState {
@@ -245,6 +255,12 @@ impl GameState {
 
     pub fn is_done(&self) -> bool {
         self.tick == MAX_TICKS
+    }
+
+    pub fn add_meteor(&mut self, pos: Vec2, vel: Vec2, typ: MeteorType) -> Id {
+        let id = self.get_next_id();
+        self.meteors.push(Meteor::new(id, pos, vel, typ));
+        id
     }
 
     fn get_next_id(&mut self) -> Id {
@@ -352,6 +368,155 @@ impl GameState {
     }
 }
 
+#[derive(Debug)]
+struct SimRocket {
+    rocket: Rocket,
+    exit_tick: Tick,
+}
+
+#[derive(Debug)]
+struct SimMeteor {
+    meteor: Meteor,
+    exit_tick: Tick,
+    min_tick: Tick,
+}
+
+/// Lightweight implementation of tick updates, to quickly find the result of
+/// in-flight rockets.
+/// Returns the meteor IDs that were hit.
+pub fn resolve_simulation(state: &GameState, mut rng: GameRandom,
+                          constants: &Constants) -> ResolvedState {
+    let mut tick = state.tick;
+    let mut meteors: Vec<SimMeteor> = state.meteors.iter()
+        .map(|m| SimMeteor {
+            meteor: m.clone(),
+            exit_tick: meteor_exit_tick(&m, tick, constants),
+            min_tick: tick,
+        })
+        .collect();
+    let mut rockets: Vec<SimRocket> = state.rockets.iter()
+        .map(|r| SimRocket {
+            rocket: r.clone(),
+            exit_tick: rocket_exit_tick(&r, tick, constants),
+        })
+        .collect();
+    let mut score = state.score;
+    let mut meteor_hits = Vec::new();
+    if rockets.is_empty() {
+        return ResolvedState { meteor_hits: Vec::new(), score, tick }
+    }
+    let mut next_id = state.next_id;
+    let max_rocket_exit_tick = rockets.iter().map(|r| r.exit_tick).max().unwrap();
+    let mut last_spawn_tick = tick - 1;
+    while !rockets.is_empty() && tick < MAX_TICKS {
+        // TODO: don't do updates at all, just do collision checks with rewinds?
+        //       + cache rocket->meteor collisions
+        let mut earliest_hit: Option<Collision> = None;
+        // Find the earliest rocket->meteor hit in existing meteors
+        for (rocket_idx, rocket) in rockets.iter().enumerate() {
+            for (meteor_idx, meteor) in meteors.iter().enumerate() {
+                if let Some(collision) = rocket_meteor_collision(
+                    rocket_idx, &rocket.rocket, meteor_idx, &meteor.meteor,
+                    constants) {
+                    // Using floor, since the collision would be processed at
+                    // the start of the tick.
+                    let collision_tick = tick + (collision.t.floor() as Tick);
+                    // Note that we don't check for '=', since the server checks
+                    // for hits before checking for exits.
+                    if collision_tick >= rocket.exit_tick ||
+                        collision_tick >= meteor.exit_tick {
+                        // One of the two would be out of bounds by then
+                        continue;
+                    }
+                    if collision_tick >= MAX_TICKS {
+                        continue;
+                    }
+                    if collision_tick < meteor.min_tick {
+                        continue;
+                    }
+                    if earliest_hit.as_ref().map_or(true, |h| collision.t < h.t) {
+                        earliest_hit = Some(collision);
+                    }
+                }
+            }
+        }
+        let mut next_tick = earliest_hit.as_ref()
+            .map_or(max_rocket_exit_tick, |h| tick + (h.t.floor()) as Tick)
+            .min(MAX_TICKS);
+        // Check for spawns before this hit
+        let start_tick = (last_spawn_tick+1).max(tick);
+        for spawn_tick in start_tick..=next_tick {
+            if is_spawn_tick(spawn_tick) {
+                last_spawn_tick = spawn_tick;
+                let id = next_id;
+                let spawn = rng.next_spawn(constants);
+                next_id += 1;
+                // This new spawn will get updated assuming it was there at
+                // 'tick', rewind it accordingly (also needed to check for
+                // collisions).
+                let spawn_delta = spawn_tick - tick;
+                let new_meteor = Meteor::new(
+                    id, spawn.pos.minus(&spawn.vel.scale(spawn_delta as f64)),
+                    spawn.vel, MeteorType::Large);
+                let exit_tick = meteor_exit_tick(&new_meteor, tick, constants);
+                meteors.push(SimMeteor {
+                    meteor: new_meteor, exit_tick, min_tick: spawn_tick
+                });
+                // Skip the previously found hit -- there's a spawn before then.
+                earliest_hit = None;
+                next_tick = spawn_tick;
+                break;
+            }
+        }
+        // Update meteors/rockets positions by the delta tick
+        let delta_tick = next_tick - tick;
+        for meteor in meteors.iter_mut() {
+            meteor.meteor.pos = meteor.meteor.pos.add(
+                &meteor.meteor.vel.scale(delta_tick as f64));
+        }
+        for rocket in rockets.iter_mut() {
+            rocket.rocket.pos = rocket.rocket.pos.add(
+                &rocket.rocket.vel.scale(delta_tick as f64));
+        }
+        tick = next_tick;
+        // Handle the collision, if any.
+        if let Some(collision) = earliest_hit {
+            let meteor = &mut meteors[collision.meteor_idx];
+            let rocket = &mut rockets[collision.rocket_idx];
+            rocket.rocket.destroyed = true;
+            meteor.meteor.destroyed = true;
+            meteor_hits.push(meteor.meteor.id);
+            score += constants.get_meteor_info(meteor.meteor.typ).score as Score;
+            // The hit happens at the sub-tick level, rewind to before the hit
+            // to find the exact position.
+            let intersection = make_intersection(
+                &MovingCircle {
+                    pos: rocket.rocket.pos.minus(&rocket.rocket.vel.scale(delta_tick as f64)),
+                    vel: rocket.rocket.vel,
+                    size: constants.rockets.size,
+                },
+                &MovingCircle {
+                    pos: meteor.meteor.pos.minus(&meteor.meteor.vel.scale(delta_tick as f64)),
+                    vel: meteor.meteor.vel,
+                    size: constants.get_meteor_info(meteor.meteor.typ).size,
+                }, collision.t);
+            let hit_pos = intersection.intersection;
+            for split in rng.next_splits(
+                &hit_pos, &meteor.meteor.vel, meteor.meteor.typ, constants) {
+                let id = next_id;
+                next_id += 1;
+                let new_meteor = Meteor::new(id, split.pos, split.vel, split.typ);
+                let exit_tick = meteor_exit_tick(&new_meteor, tick, constants);
+                meteors.push(SimMeteor {
+                    meteor: new_meteor, exit_tick, min_tick: tick + 1
+                });
+            }
+        }
+        rockets.retain(|r| !r.rocket.destroyed && tick < r.exit_tick);
+        meteors.retain(|m| !m.meteor.destroyed && tick < m.exit_tick);
+    }
+    ResolvedState { meteor_hits, score, tick }
+}
 
 pub fn meteor_in_bounds_x(pos: &Vec2) -> bool {
     // Note: server does not check the right side, confirmed via reversing the
@@ -373,6 +538,53 @@ pub fn max_rocket_x(constants: &Constants) -> f64 {
     (constants.world.width as f64) + constants.rockets.size * 2.0
 }
 
+/// Tick where a meteor will exit the screen and will despawn.
+pub fn meteor_exit_tick(meteor: &Meteor, current_tick: Tick,
+                        constants: &Constants) -> Tick {
+    let remaining_x = meteor.pos.x;
+    assert!(remaining_x >= 0.0);
+    assert!(meteor.vel.x <= 0.0);
+    let ticks_x = if meteor.vel.x < 0.0 { remaining_x / (-meteor.vel.x) } else { f64::MAX };
+    let ticks_y = if meteor.vel.y > 0.0 {
+        let remaining_y = constants.world.height as f64 - meteor.pos.y;
+        remaining_y / meteor.vel.y
+    } else if meteor.vel.y < 0.0 {
+        let remaining_y = meteor.pos.y;
+        remaining_y / (-meteor.vel.y)
+    } else {
+        f64::MAX
+    };
+    let ticks = ticks_x.min(ticks_y).ceil() as Tick;
+    current_tick + ticks
+}
+
+/// Tick where a rocket will exit the screen and will despawn.
+/// Note that the server does not check for Y despawns, but we do here to speed
+/// up simulations, i.e. we consider the exit tick when the rocket can no longer
+/// hit anything.
+pub fn rocket_exit_tick(rocket: &Rocket, current_tick: Tick,
+                        constants: &Constants) -> Tick {
+    let remaining_x = max_rocket_x(constants) - rocket.pos.x;
+    assert!(remaining_x >= 0.0);
+    assert!(rocket.vel.x >= 0.0);
+    // Rockets technically never despawn on the Y axis. However, they can't hit
+    // anything once they are rocket_size + max_meteor_size away from the side.
+    let y_buffer = constants.rockets.size +
+        constants.get_meteor_info(MeteorType::Large).size;
+    let ticks_x = if rocket.vel.x > 0.0 { remaining_x / rocket.vel.x } else { f64::MAX };
+    let ticks_y = if rocket.vel.y > 0.0 {
+        let remaining_y = constants.world.height as f64 + y_buffer - rocket.pos.y;
+        remaining_y / rocket.vel.y
+    } else if rocket.vel.y < 0.0 {
+        let remaining_y = rocket.pos.y + y_buffer;
+        remaining_y / (-rocket.vel.y)
+    } else {
+        f64::MAX
+    };
+    let ticks = ticks_x.min(ticks_y).ceil() as Tick;
+    current_tick + ticks
+}
+
 pub fn total_score(meteor_type: MeteorType, constants: &Constants) -> Score {
     let mut score = 0;
     let info = &constants.get_meteor_info(meteor_type);
@@ -381,4 +593,171 @@ pub fn total_score(meteor_type: MeteorType, constants: &Constants) -> Score {
         score += total_score(explosion.meteor_type, constants);
     }
     score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_message::default_game_settings;
+    use crate::seedrandom::SeedRandom;
+
+    fn slow_resolve_simulation(
+        mut state: GameState, mut rng: GameRandom,
+        constants: &Constants) -> (Score, Vec<Id>, Vec<EventInfo>) {
+        let mut hits = Vec::new();
+        let mut events = Vec::new();
+        while !state.is_done() && !state.rockets.is_empty() {
+            for event in run_server_tick(&mut state, &mut rng, constants) {
+                if let EventInfo::Hit { meteor, .. } = event {
+                    hits.push(meteor);
+                }
+                events.push(event);
+            }
+        }
+        (state.score, hits, events)
+    }
+
+    #[test]
+    fn test_meteor_exit_tick() {
+        let mut constants = Constants::default();
+        constants.world.width = 1200;
+        constants.world.height = 800;
+        // Exit on the left, dy > 0
+        assert_eq!(meteor_exit_tick(
+                &Meteor::new(/*id=*/42, /*pos=*/Vec2::new(35.0, 400.0),
+                             /*vel=*/Vec2::new(-10.0, 1.0), /*typ=*/MeteorType::Large),
+                /*tick=*/5, &constants),
+            9);
+        // Exit on the left, dy < 0
+        assert_eq!(meteor_exit_tick(
+                &Meteor::new(/*id=*/42, /*pos=*/Vec2::new(35.0, 400.0),
+                             /*vel=*/Vec2::new(-10.0, -1.0), /*typ=*/MeteorType::Large),
+                /*tick=*/5, &constants),
+            9);
+        // Exit on the left, dy = 0
+        assert_eq!(meteor_exit_tick(
+                &Meteor::new(/*id=*/42, /*pos=*/Vec2::new(35.0, 400.0),
+                             /*vel=*/Vec2::new(-10.0, 0.0), /*typ=*/MeteorType::Large),
+                /*tick=*/5, &constants),
+            9);
+        // Exit on the top, dx = 0
+        assert_eq!(meteor_exit_tick(
+                &Meteor::new(/*id=*/42, /*pos=*/Vec2::new(400.0, 35.0),
+                             /*vel=*/Vec2::new(0.0, -10.0), /*typ=*/MeteorType::Large),
+                /*tick=*/5, &constants),
+            9);
+        // Exit on the bottom, dx < 0
+        assert_eq!(meteor_exit_tick(
+                &Meteor::new(/*id=*/42, /*pos=*/Vec2::new(400.0, 765.0),
+                             /*vel=*/Vec2::new(-10.0, 10.0), /*typ=*/MeteorType::Large),
+                /*tick=*/5, &constants),
+            9);
+    }
+
+    #[test]
+    fn test_rocket_exit_tick() {
+        let mut constants = Constants::default();
+        constants.world.width = 1200;
+        constants.world.height = 800;
+        constants.rockets.size = 5.0;
+        constants.meteor_infos.0[MeteorType::Large as usize].size = 50.0;
+        // Note: for rockets, last x will be 1200 + 5 * 2
+        // Exit on the right, dy > 0
+        assert_eq!(rocket_exit_tick(
+                &Rocket::new(/*id=*/42, /*pos=*/Vec2::new(1200.0, 400.0),
+                             /*vel=*/Vec2::new(3.0, 1.0)),
+                /*tick=*/5, &constants),
+            9);
+        // Exit on the right, dy < 0
+        assert_eq!(rocket_exit_tick(
+                &Rocket::new(/*id=*/42, /*pos=*/Vec2::new(1200.0, 400.0),
+                             /*vel=*/Vec2::new(3.0, -1.0)),
+                /*tick=*/5, &constants),
+            9);
+        // Exit on the right, dy = 0
+        assert_eq!(rocket_exit_tick(
+                &Rocket::new(/*id=*/42, /*pos=*/Vec2::new(1200.0, 400.0),
+                             /*vel=*/Vec2::new(3.0, 0.0)),
+                /*tick=*/5, &constants),
+            9);
+        // Note: for rockets, min y will be -5 - 50
+        // Note: for rockets, max y will be 800 + 5 + 50
+        // Exit on the top, dx = 0
+        assert_eq!(rocket_exit_tick(
+                &Rocket::new(/*id=*/42, /*pos=*/Vec2::new(400.0, 10.0),
+                             /*vel=*/Vec2::new(0.0, -15.0)),
+                /*tick=*/5, &constants),
+            10);
+        // Exit on the bottom, dx > 0
+        assert_eq!(rocket_exit_tick(
+                &Rocket::new(/*id=*/42, /*pos=*/Vec2::new(400.0, 790.0),
+                             /*vel=*/Vec2::new(1.0, 15.0)),
+                /*tick=*/5, &constants),
+            10);
+    }
+
+    #[test]
+    fn test_resolve_simulation_no_rockets() {
+        let mut state = GameState::new(/*first_id=*/0);
+        state.add_meteor(Vec2::new(400.0, 400.0), Vec2::new(-10.0, 0.0), MeteorType::Large);
+        state.add_meteor(Vec2::new(200.0, 200.0), Vec2::new(-10.0, 0.0), MeteorType::Large);
+        let (constants, _) = default_game_settings();
+        let rng = GameRandom::new(SeedRandom::from_seed(b"TestSeed"));
+        let resolved = resolve_simulation(&state, rng, &constants);
+        assert_eq!(resolved.meteor_hits, Vec::<Id>::new());
+    }
+
+    #[test]
+    fn test_resolve_simulation_rocket_miss_no_hits() {
+        let mut state = GameState::new(/*first_id=*/0);
+        let (constants, cannon) = default_game_settings();
+        state.add_meteor(Vec2::new(400.0, 400.0), Vec2::new(-10.0, 0.0), MeteorType::Large);
+        state.add_meteor(Vec2::new(200.0, 200.0), Vec2::new(-10.0, 0.0), MeteorType::Large);
+        let rng = GameRandom::new(SeedRandom::from_seed(b"TestSeed"));
+        // Will miss way below the meteors.
+        state.shoot(&cannon, &constants, &Vec2::new(300.0, 700.0),
+                    /*target_id=*/0);
+        let resolved = resolve_simulation(&state, rng, &constants);
+        assert_eq!(resolved.meteor_hits, Vec::<Id>::new());
+    }
+
+    #[test]
+    fn test_resolve_simulation_rocket_hits_meteor() {
+        let mut state = GameState::new(/*first_id=*/0);
+        let (constants, cannon) = default_game_settings();
+        let cannon_pos: Vec2 = cannon.position.into();
+        state.add_meteor(Vec2::new(400.0, cannon_pos.y), Vec2::new(-10.0, 0.0), MeteorType::Large);
+        let rng = GameRandom::new(SeedRandom::from_seed(b"TestSeed"));
+        // Will hit the meteor directly
+        state.shoot(&cannon, &constants, &Vec2::new(cannon_pos.x + 100.0, cannon_pos.y),
+                    /*target_id=*/0);
+        let resolved = resolve_simulation(&state, rng, &constants);
+        let large_score = constants.get_meteor_info(MeteorType::Large).score as Score;
+        assert_eq!(resolved.meteor_hits, vec![0]);
+        assert_eq!(resolved.score, state.score + large_score);
+    }
+
+    #[test]
+    fn test_resolve_simulation_matches_slow_resolve() {
+        let mut state = GameState::new(/*first_id=*/0);
+        let (constants, cannon) = default_game_settings();
+        let cannon_pos: Vec2 = cannon.position.into();
+        let mut rng = GameRandom::new(SeedRandom::from_seed(b"TestSeed"));
+        while !state.is_done() {
+            run_server_tick(&mut state, &mut rng, &constants);
+            if state.cannon_ready() {
+                let dummy_target_id = 0;
+                state.shoot(&cannon, &constants,
+                            &Vec2::new(cannon_pos.x + 100.0, cannon_pos.y),
+                            dummy_target_id);
+            }
+            let resolved = resolve_simulation(&state, rng.clone(), &constants);
+            let (score, hits, events) = slow_resolve_simulation(
+                state.clone(), rng.clone(), &constants);
+            assert_eq!(resolved.meteor_hits, hits, "Events:\n{}",
+                       events.iter().map(|e| format!("- {:?}", e))
+                           .collect::<Vec<String>>().join("\n"));
+            assert_eq!(resolved.score, score);
+        }
+    }
 }
