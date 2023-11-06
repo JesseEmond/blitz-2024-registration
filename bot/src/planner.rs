@@ -373,9 +373,10 @@ struct TentativeShot<'a> {
 impl TentativeShot <'_> {
     pub fn get_result(&mut self, rng: GameRandom) -> Option<TentativeShotResults> {
         let rocket_id = self.shoot()?;
-        let (score, hits) = self.resolve_simulation(rng);
+        let resolved = resolve_simulation(&self.state, rng, self.constants);
         Some(TentativeShotResults {
-            score, hits,
+            score: resolved.score,
+            hits: resolved.meteor_hits,
             rocket_id,
             target_id: self.target_id(),
         })
@@ -399,27 +400,6 @@ impl TentativeShot <'_> {
             // target's ID.
             self.target.meteor.id + 1
         }
-    }
-
-    /// Simulates until all rockets are gone, tracking hits.
-    /// Returns the ending score and meteor hit IDs.
-    fn resolve_simulation(&mut self, mut rng: GameRandom) -> (Score, Vec<Id>) {
-        let mut hits = Vec::new();
-        let resolved = resolve_simulation(&self.state, rng.clone(), self.constants);
-        let mut events = Vec::new();
-        while !self.state.is_done() && !self.state.rockets.is_empty() {
-            for event in run_server_tick(&mut self.state, &mut rng, self.constants) {
-                if let EventInfo::Hit { meteor, .. } = event {
-                    hits.push(meteor);
-                }
-                events.push(event);
-            }
-        }
-        assert_eq!(resolved.meteor_hits, hits, "Events:\n{}",
-                   events.iter().map(|e| format!("- {:?}", e))
-                       .collect::<Vec<String>>().join("\n"));
-        assert_eq!(resolved.score, self.state.score);
-        (self.state.score, hits)
     }
 }
 
