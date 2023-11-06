@@ -237,15 +237,9 @@ impl<'a> SearcherState<'a> {
     }
 
     fn generate_hold_action(&self) -> Action {
-        let mut state = self.state.clone();
-        let mut random = self.random.clone();
-        while !state.is_done() {
-            if state.rockets.is_empty() {
-                break;
-            }
-            run_server_tick(&mut state, &mut random, self.constants);
-        }
-        Action::Hold { potential_score: state.score }
+        let resolved = resolve_simulation(&self.state, self.random.clone(),
+                                          self.constants);
+        Action::Hold { potential_score: resolved.score }
     }
 
     fn apply_shot(&mut self, aim: &Vec2, target_id: Id) -> Id {
