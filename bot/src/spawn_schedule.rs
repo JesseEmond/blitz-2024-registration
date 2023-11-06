@@ -7,8 +7,24 @@ use crate::game_message::{MAX_TICKS};
 const GENERATION_TICKS_DELAY_START: u16 = 60;
 const GENERATION_TICKS_DELAY_FINISH: u16 = 30;
 
+lazy_static! {
+    /// Precomputed IS_SPAWN_TICK for a given tick.
+    static ref IS_SPAWN_TICK: [bool; MAX_TICKS as usize + 1] = precompute_is_spawn_tick();
+}
 pub fn is_spawn_tick(tick: u16) -> bool {
+    IS_SPAWN_TICK[tick as usize]
+}
+
+fn check_is_spawn_tick(tick: u16) -> bool {
     tick % get_current_generation_ticks_delay(tick) == 0
+}
+
+fn precompute_is_spawn_tick() -> [bool; MAX_TICKS as usize + 1] {
+    let mut precomputed = [false; MAX_TICKS as usize + 1];
+    for tick in 0..=MAX_TICKS {
+        precomputed[tick as usize] = check_is_spawn_tick(tick);
+    }
+    precomputed
 }
 
 // Logic from the disassembled world.js in local binary.
