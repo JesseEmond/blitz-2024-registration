@@ -30,7 +30,7 @@ fn mcts_stardreamer(rounds: usize) -> u32 {
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("mcts-throughput");
     group.sample_size(10);
-    const ROUNDS: usize = 1000;
+    const ROUNDS: usize = 2000;
     group.throughput(Throughput::Elements(ROUNDS as u64));
     group.bench_function("mcts_stardreamer", |b| b.iter(|| mcts_stardreamer(ROUNDS)));
     group.finish();

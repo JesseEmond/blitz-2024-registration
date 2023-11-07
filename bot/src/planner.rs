@@ -18,7 +18,7 @@ const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     random_action_prob: 0.05,
     uncertainty_d: 10.0,
     print_every_n_rounds: Some(800),
-    reset_after_n_nodes: Some(500000),  // TODO: more frequent?
+    reset_after_n_nodes: Some(500000),
 };
 const MCTS_BUDGET: Duration = Duration::from_millis(500);
 // Max aiming options added to actions for a single meteor.
@@ -84,25 +84,11 @@ impl<'a> Planner<'a> {
 
     pub fn next_action(&mut self) -> Vec<Event> {
         let mut events = Vec::new();
-        // TODO: keep MCTS state across ticks?
         let mut best_seen_score = self.mcts.best_seen_score;
-        // let mut best_action = None;
-        // for _ in 0..MCTS_META_ITERS {
-        //     let mut mcts = MCTS::new(self.search_state.clone(), MCTS_OPTIONS);
-        //     mcts.run_with_budget(MCTS_BUDGET);
-        //     if mcts.best_seen_score > best_seen_score {
-        //         best_seen_score = mcts.best_seen_score;
-        //         println!("New best: {}", best_seen_score);
-        //         best_action = Some(mcts.best_action());
-        //         println!("Action: {:?}", best_action);
-        //     }
-        // }
         self.mcts.run_with_budget(MCTS_BUDGET);
         if self.mcts.best_seen_score > best_seen_score {
             best_seen_score = self.mcts.best_seen_score;
             println!("New best: {}", best_seen_score);
-            // best_action = Some(self.mcts.best_action());
-            // println!("Action: {:?}", best_action);
         }
         for event in run_server_tick(
             &mut self.game_state, &mut self.random, &self.constants) {

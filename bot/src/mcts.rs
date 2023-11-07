@@ -86,7 +86,8 @@ impl<S: SearchState> Node<S> {
                 >= self.sum_squared_scores);
         // Treat our win ratio as the sum of total scores normalized by the max
         // possible score, to get a [0, 1] value.
-        let win_ratio = self.sum_scores as f64 / (self.num_sims * max_score) as f64;
+        let win_ratio = self.sum_scores as f64 /
+            (self.num_sims as u64 * max_score as u64) as f64;
         assert!(win_ratio >= 0.0 && win_ratio <= 1.0,
                 "win ratio: {}, sum scores: {}, sims: {}, max score: {}",
                 win_ratio, self.sum_scores, self.num_sims, max_score);
