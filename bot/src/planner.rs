@@ -1,5 +1,6 @@
 // TODO: refactor to be only about SearchState
 use std::hash::Hasher;
+use std::thread;
 use std::time::Duration;
 
 use rustc_hash::FxHasher;
@@ -14,16 +15,20 @@ use crate::vec2::Vec2;
 
 const MCTS_OPTIONS: MCTSOptions = MCTSOptions {
     exploration_multiplier: 1.0,
-    // TODO: try full random playthrough % instead?
     random_action_prob: 0.05,
     uncertainty_d: 10.0,
     print_every_n_rounds: Some(800),
     reset_after_n_nodes: Some(500000),
 };
-const MCTS_BUDGET: Duration = Duration::from_millis(500);
+const MCTS_BUDGET: Duration = Duration::from_millis(750);
 // Max aiming options added to actions for a single meteor.
 // (Note: impossible aiming options aren't counted)
 const NUM_SHOOTING_AIM_OPTIONS: usize = 1;
+// Maximum number of threads to spawn. If unset, defaults to num available
+// *physical* cores - 1.
+// Note that the current MCTS tree is copied this amount of times, so pick
+// thresholds accordingly to remain under the desired RAM budget.
+const MAX_THREADS: Option<usize> = None;
 
 /// Events at the time where the client would see them (i.e. the tick after
 /// they happened). Note that we move forward the meteors in EventInfos by one
@@ -85,7 +90,7 @@ impl<'a> Planner<'a> {
     pub fn next_action(&mut self) -> Vec<Event> {
         let mut events = Vec::new();
         let mut best_seen_score = self.mcts.best_seen_score;
-        self.mcts.run_with_budget(MCTS_BUDGET);
+        self.mcts = self.run_mcts();
         if self.mcts.best_seen_score > best_seen_score {
             best_seen_score = self.mcts.best_seen_score;
             println!("New best: {}", best_seen_score);
@@ -112,6 +117,36 @@ impl<'a> Planner<'a> {
             },
         }
         events
+    }
+
+    fn run_mcts(&self) -> MCTS<SearcherState<'a>> {
+        let parallelism = match MAX_THREADS {
+            Some(threads) => threads,
+            None => {
+                let num_cores = num_cpus::get_physical();
+                assert!(num_cores > 0);
+                num_cores - 1
+            },
+        };
+        thread::scope(|s| {
+            let mut handles = vec![];
+            for _ in 0..parallelism {
+                let mut mcts = self.mcts.clone();
+                handles.push(s.spawn(move || {
+                    mcts.run_with_budget(MCTS_BUDGET);
+                    mcts
+                }));
+            }
+            let mut best_mcts: Option<MCTS<SearcherState>> = None;
+            for h in handles {
+                let mcts = h.join().unwrap();
+                if best_mcts.as_ref()
+                    .map_or(true, |m| mcts.best_seen_score > m.best_seen_score) {
+                    best_mcts = Some(mcts);
+                }
+            }
+            best_mcts.unwrap()
+        })
     }
 }
 

@@ -6,6 +6,7 @@ use rand::prelude::SliceRandom;
 
 use crate::search::SearchState;
 
+#[derive(Clone)]
 pub struct MCTSOptions {
     pub exploration_multiplier: f64,
     pub random_action_prob: f32,
@@ -18,18 +19,24 @@ pub struct MCTSOptions {
 type NodeIdx = usize;
 type ChildIdx = usize;
 
-struct Child<S: SearchState> {
+#[derive(Clone)]
+struct Child<S: SearchState>
+where S::Action: Clone {
     node_idx: NodeIdx,
     /// Action taken to get to this child.
     action: S::Action,
     expanded: bool,
 }
 
-struct NodeData<S: SearchState> {
+#[derive(Clone)]
+struct NodeData<S: SearchState>
+where S::Action: Clone {
     children: Vec<Child<S>>,
 }
 
-struct Node<S: SearchState> {
+#[derive(Clone)]
+struct Node<S: SearchState>
+where S::Action: Clone {
     data: Option<NodeData<S>>,
     fully_expanded: bool,
     /// Max possible score seen in this branch, used to normalize scores for UCT.
@@ -39,7 +46,8 @@ struct Node<S: SearchState> {
     num_sims: u32,
 }
 
-impl<S: SearchState> Node<S> {
+impl<S: SearchState> Node<S>
+where S::Action: Clone {
     fn new(max_score: u32) -> Self {
         Self {
             data: None,
@@ -109,7 +117,9 @@ impl<S: SearchState> Node<S> {
 /// Sequence of child node indices, used in backprop.
 type Path = Vec<ChildIdx>;
 
-pub struct MCTS<S: SearchState> {
+#[derive(Clone)]
+pub struct MCTS<S: SearchState>
+where S::Action: Clone {
     start_state: S,
     root_idx: NodeIdx,
     nodes: Vec<Node<S>>,
@@ -138,16 +148,9 @@ where S::Action: Clone {
 
     pub fn run_with_budget(&mut self, budget: Duration) {
         let start = Instant::now();
-        let mut rounds = 0;
         while start.elapsed() < budget {
             self.run_round(&mut rand::thread_rng());
-            rounds += 1;
         }
-        let duration = start.elapsed();
-        if self.options.print_every_n_rounds.is_some() {
-            println!("Ran {} rounds in {:?}", rounds, duration);
-        }
-
     }
 
     pub fn run_round(&mut self, noise_rng: &mut impl Rng) {

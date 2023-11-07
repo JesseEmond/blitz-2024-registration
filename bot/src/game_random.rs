@@ -1,7 +1,6 @@
 // Based on known possible server seeds, infer what seed was picked (and the RNG
 // state) based on the first observed meteor.
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::game_message::{Constants, GameMessage, MeteorType};
 use crate::seedrandom::SeedRandom;
@@ -41,7 +40,7 @@ impl RandomPool {
 
 #[derive(Clone)]
 pub struct GameRandom {
-    pool: Rc<RefCell<RandomPool>>,
+    pool: Arc<Mutex<RandomPool>>,
     rand_index: usize,
 }
 
@@ -57,13 +56,13 @@ const FLOAT_EQ_EPS: f64 = 1e-8;
 impl GameRandom {
     pub fn new(rng: SeedRandom) -> Self {
         Self {
-            pool: Rc::new(RefCell::new(RandomPool::new(rng))),
+            pool: Arc::new(Mutex::new(RandomPool::new(rng))),
             rand_index: 0
         }
     }
 
     fn next_random(&mut self) -> f64 {
-        let out = self.pool.borrow_mut().random(self.rand_index);
+        let out = self.pool.lock().unwrap().random(self.rand_index);
         self.rand_index += 1;
         out
     }
