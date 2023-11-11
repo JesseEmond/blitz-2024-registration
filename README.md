@@ -244,12 +244,16 @@ of that:
 
 ### Simple Bot Results
 
-TODO: score, video of example game
+Through some iteration, we eventually get a score of TODO pts:
 
-TODO: git branch TODO
+TODO(emond): Game video, update score above
 
-TODO: ... but that's not 5000 pts, and this README is nowhere near the end,
-      ... what's next?
+For the simple bot's code, see the branch
+[`py_bot`](https://github.com/JesseEmond/blitz-2024-registration/tree/py_bot),
+where the simple bot can be enabled via settings.
+
+... But this is not 5000 points. And this README is nowhere near the end...
+What's next?
 
 ## Rabbit Hole #1: What if Blitz was a CTF?
 
