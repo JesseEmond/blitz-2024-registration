@@ -43,14 +43,57 @@ And this is where I went down a very deep rabbit hole...
 ... And it paid off. We ended up with a _very very accurate_ bot, and you'll see
 exactly why in a bit.
 
-The bot ended up with a 5000 points game, in first position, at the end of the
-event. For the video of the winning game, you can skip to the end of the README.
+The bot ended up with a **5000 points** game, in first position, at the end of
+the event. For the video of the winning game, you can skip to the end of the
+README.
 
 ## Challenge Description
 
-TODO: description of rules
+The game we're playing looks something like this:
 
-TODO: visual example of some mid-score game
+TODO(emond): include image here
+
+The game is tick-based, lasts 1000 ticks, and we have maximum **1s** to give our
+actions for each game tick.
+
+Our cannon, on the left, is positioned at
+`(140, 400)`, and can shoot a rocket every 10 ticks. On each tick, we can send
+an action to look at a point (or change orientation) and an action to shoot,
+if our cannon has cooled down.
+
+Meteors spawn at random heights on the very right, heading left with a random
+orientation. Hitting a meteor can lead to it splitting into smaller meteors,
+each with a random speed and an orientation relative to their parent meteor's
+orientation.
+
+The types of meteors are:
+- **Large**: all spawns are of this type. They are worth 15 points, with a speed
+  of 3 units/tick, and a radius of 40. On hit, it will split into two _Medium_
+  meteors, each with a velocity at an angle relative to their parent's of -18°
+  and +18°, respectively.
+- **Medium**: Worth 40 points, with a speed of approximately 9 units/tick, and a
+  radius of 20. On hit, will split into three _Small_ meteors, each with a
+  velocity at an angle relative to their parent's of -30°, 0°, and +30°,
+  respectively.
+- **Small**: Worth 60 points, with a speed of approximately 13 units/tick, and a
+  radius of 5.
+
+Some interesting notes:
+- _Small_ meteors are the hardest to hit (they're  small and fast) and are worth
+  the most when hit (i.e. if we have to choose between two meteors about to exit
+  the screen, we should prioritize the _Small_ one), but _Large_ have the
+  highest score potential (i.e. if we have time, we should hit as many of the
+  _Large_ descendents as we can);
+- Split speeds have randomness in them, which means that we might miss a meteor
+  if we guess it wrong when shooting early.
+
+As for the specifics of how collisions are checked (checked every tick? or at
+the sub-tick (continuous) level?) or how split positions are determined, we
+aren't told -- we'll have to make guesses and check if they're right.
+
+A game might look like this (for example, this is a TODO points game):
+
+TODO(emond): Include example game vid, + score above.
 
 ## Simple Bot
 
