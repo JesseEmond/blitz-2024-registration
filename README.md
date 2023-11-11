@@ -5,7 +5,19 @@ TODOs:
 - [ ] Go through code remaining TODOs
 - [ ] sections below
 
-TODO: introduction, prev blitz verisons
+It is a little bit of a tradition now to put _just a smidge_ of overkill for the
+[Coveo Blitz](https://2024.blitz.codes/) registration challenge:
+- In 2023, we were solving the Traveling Salesperson Problem with
+  [ant simulations](https://github.com/JesseEmond/blitz-2023-inscription);
+- In 2022, we were
+  [packing Tetrominoes](https://github.com/JesseEmond/blitz-2022-inscription)
+  while [msanfacon@](https://twitter.com/msanfacon) was trolling us on the
+  leaderboard;
+- in 2021, we were hard-coding an HTTP server in C++ to parse ints
+  [_lightning fast_](https://github.com/JesseEmond/blitz-2021-chal).
+
+For this year, we're shooting rockets at asteroids, and the overkill took... a
+different form.
 
 ## Summary
 
