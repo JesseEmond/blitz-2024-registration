@@ -97,16 +97,105 @@ TODO(emond): Include example game vid, + score above.
 
 ## Simple Bot
 
-TODO: intro
+To start things off, I wrote some Python code to:
+- 1) aim ahead of a meteor to hit it, picking & tracking existing targets;
+- 2) simulate server tick logic to verify that our intended hits will happen;
+- 3) infer what the server did between ticks to verify our predictions.
 
 ### Aim & Shoot
 
-TODO: aim-ahead detour, math behind it + visuals?
+Shooting at a moving circle (meteor) with a known rocket speed (20) is a very
+simplified version of ballistics (no acceleration, no gravity force, ...), which
+thankfully is well documented for example in the context of
+[game development](https://gamedev.stackexchange.com/q/25277). This link
+provides the necessary formula, but it'd be interesting to derive it ourselves.
 
-TODO: moving circle collision detour, math behind it + visuals?
+We can view the problem as having an expanding circle (at the speed of
+`rocket_speed`) from our source position, which intersects with the meteor's
+position at time `t`. We can visualize this as a triangle with an unknown angle
+and solve for `t`, where we know the source position (cannon position), the
+target's starting position (meteor's current position), and the collision
+position being `meteor_pos + t * meteor_velocity`, for an unknown `t`. Visually:
 
-TODO: simple bot: pick a valid shootable target (e.g. higher score first), don't
-      shoot targets we already shot at
+TODO(emond): include diagram
+
+From there we can derive the `a`, `b`, `c` to plug in our
+[quadratic formula](https://en.wikipedia.org/wiki/Quadratic_formula):
+
+<details>
+  <summary>Math derivation</summary>
+
+  ```
+  TODO(emond): math derivation
+  ```
+</details>
+
+This gives us a helper method to know where to aim to hit a meteor, using the
+non-negative `t` solution (if any):
+```py
+@dataclasses.dataclass
+class MovingCircle:
+  pos: Vector
+  vel: Vector
+  size: float
+
+def aim_ahead(source: Vector, rocket_speed: float,
+              target: MovingCircle) -> Optional[Vector]:
+  delta_pos = target.pos.minus(source)
+  a = target.vel.dot(target.vel) - rocket_speed * rocket_speed
+  b = 2 * target.vel.dot(delta_pos)
+  c = delta_pos.dot(delta_pos)
+  ts = solve_quadratic(a, b, c)
+  if not ts:
+    return None
+  t = max(t)
+  return target.pos.add(target.vel.scale(t))
+
+def solve_quadratic(a: float, b: float,
+                    c: float) -> Optional[Tuple[float, float]]:
+  if a == 0:
+    x = -c / b  // linear equation solving
+    return x, x
+  p = -b / (2 * a)
+  det = b * b - 4 * a * c
+  if det < 0:
+    return None
+  q = math.sqrt(det) / (2 * a)
+  return p - q, p + q
+```
+
+But if we also try to predict the time of collision, we'd be wrong to use that
+`t` directly, because that `t` tells us when the center of our rocket would
+collide with the center of our meteor. The two circles (meteor with a size
+depending on its type and rocket with a size of 5) will intersect before then.
+
+To get the exact time of collision, we should instead use that aim point to get
+our rocket's direction and velocity vector, and solve for the collision of the
+two moving circles. We can view this as a problem of solving for the delta time
+`t'` where both circles have a distance of `rocket_size + meteor_size`:
+
+Solving for this takes a bit more work, so I'll refer to
+[this answer](https://stackoverflow.com/a/50722146) for the specifics. We can
+simplify some of the expressions with vector functions like `len_sq` and `dot`,
+to then have a function like:
+
+```py
+def collision_times(x: MovingCircle,
+                    y: MovingCircle) -> Optional[Tuple[float, float]]:
+  r = x.size + y.size
+  a = (x.vel.len_sq() + y.vel.len_sq()) - 2 * x.vel.dot(y.vel)
+  b = 2 * (x.pos.dot(x.vel) + y.pos.dot(y.vel)
+           - x.pos.dot(y.vel) - y.pos.dot(x.vel))
+  c = x.pos.len_sq() + y.pos.len_sq() - 2 * x.pos.dot(y.pos) - r * r
+  return solve_quadratic(a, b, c)
+```
+
+We won't have a use for this right away, but it will become useful later, in
+part when we try to verify that our hits happen as predicted.
+
+But with a aiming utility, I wrote a bot that aims for the first meteor worth
+the highest points that it can hit in-bounds, remembering its already-shot-at
+targets.
 
 ### Hit Simulation
 
