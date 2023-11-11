@@ -199,10 +199,22 @@ targets.
 
 ### Hit Simulation
 
-TODO: simulate server logic to pick hits that we know will happen
+We can aim at a single meteor and hit it, but as we start aiming at more meteors
+our shots might start interacting with each other with their splits, so we also
+want to, to some degree, simulate the logic the server is using to update
+rockets & meteors and check for hits.
 
-TODO: but hard to know if our local simulation matches what the server does, how
-      do we know we're hitting what we intend to hit?
+We want to do this in primarily 2 cases:
+- 1) When picking a target, to make sure we'd actually hit it;
+- 2) On every tick, to see if we should update our active targets to match
+     reality (e.g. due to an unexpected spawn or split interaction).
+
+But simulating the server logic involves _some_ amount of guess work: are
+collisions checked at the sub-tick level? In what order are collisions checked?
+If we try and model meteor splits, too, then we are faced with even more
+questions: are meteor splits initially positioned on their parent's center or at
+the point of collision? What is the range of randomness we can expect in angle &
+speed?
 
 ### Deducing Tick Events
 
