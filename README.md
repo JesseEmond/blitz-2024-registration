@@ -21,15 +21,30 @@ different form.
 
 ## Summary
 
-TODO: the challenge, the difficulty
+We are tasked with writing a bot for a stationary cannon that has to shoot
+rockets at incoming meteors to score points. Larger meteors split into smaller &
+faster meteors when hit. The difficulty in writing this bot lies in:
+- Aiming rockets at moving meteors;
+- Choosing what meteor to aim for before they go off screen, to maximize points;
+- Unpredictability of meteor spawns and splits -- we don't know exactly where
+  meteor splits will go until the parent meteor hit happens and we see the
+  velocities of splits.
 
-TODO: started python bot that aims ahead, _tries_ to predict spawns assuming noise...
+I started off with a Python bot that aims ahead at moving meteors, prioritizing
+higher score ones, and _trying_ to simulate the server logic to verify intended
+targets are hit.
 
-TODO: fully went down a rabbit hole to _really_ understand how the server spawns meteors...
+Next, I wanted my bot to model future targets (the expected splits) to have
+rockets already on the way as soon as the newer meteors appear. This can lead to
+rocket misses, since the randomness can make our previous aim wrong, so this is
+highly dependent on how exactly the server adds noise in split generation.
+And this is where I went down a very deep rabbit hole...
 
-TODO: paid off, ended up with a _very_, _very_ accurate bot... you'll see why
+... And it paid off. We ended up with a _very very accurate_ bot, and you'll see
+exactly why in a bit.
 
-TODO: final score 5000pts (include gif winning game here?)
+The bot ended up with a 5000 points game, in first position, at the end of the
+event. For the video of the winning game, you can skip to the end of the README.
 
 ## Challenge Description
 
