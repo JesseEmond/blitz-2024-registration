@@ -218,11 +218,29 @@ speed?
 
 ### Deducing Tick Events
 
-TODO: deduce what happened between ticks: events. But, tricky. Example: 'insta-kill'
+To help answer these questions and verify my assumptions, I wrote code that
+infers what happened on the server between two ticks: spawns, hits, splits,
+missed meteors, and missed rocket shots.
 
-TODO: would run games with the local binary and detect mismatches with expectations & iterate
+This can be tricky to do right, for example if we shoot a rocket and on the same
+tick it hits a meteor (i.e. "insta-kill"), then we will never see that rocket in
+the `GameMessage` tick info, yet meteors will disappear/split and IDs increase,
+but a hit happened.
 
-TODO: event listener framework, example listeners
+So I would run games with the local server, adding asserts on my expectations to
+detect mismatches between my simulation and the real server logic, and iterate
+when they were wrong, for example if the inferred scores mismatch.
+
+For that purpose, I made a useful "event listener" framework to invoke listener
+callbacks when an event happens. Here are example useful listeners that came out
+of that:
+- `Stats`: print events and track meaningful ones (missed meteors,
+  wasted rockets, target reshuffles, etc.);
+- `TargetTracker`: verify that intended hits happened and reassign targets every
+  tick based on simulation;
+- `Asserter`: utility class that tracks the tick info and, when an assertion
+  fails, can print the full before/after state to help understand what went
+  wrong.
 
 ### Simple Bot Results
 
