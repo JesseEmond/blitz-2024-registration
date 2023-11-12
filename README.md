@@ -1089,6 +1089,7 @@ I started by looking at `game.js`.
 I found the module to look something like the following at the time, with some
 functions I didn't bother to reverse (and pretending there's no async involved):
 ```js
+// game.js
 engine = import("@blitz/engine");
 error = import("./error");
 world = import("./world");
@@ -1149,6 +1150,8 @@ exports.Blitz2024Challenge = class Blitz2024Challenge {
             this.world.update();
         }
     }
+
+    // ...
 };
 ```
 
@@ -1626,20 +1629,48 @@ bits from `1.[...]`). Still, this is too much to bruteforce in our bot
 timeframe.
 
 ### `seedrandom`
-TODO: seedrandom RC4
 
-TODO: known weaknesses with RC4 (infamously WEP TODO link), but not aware of a
-useful crypto attack here that would help us either recover the seed or predict
-future outputs
+What about `seedrandom`? It is based on [RC4](https://en.wikipedia.org/wiki/RC4).
+There are many known weaknesses with RC4 (infamously the wireless network
+encryption [WEP](https://en.wikipedia.org/wiki/Wired_Equivalent_Privacy) can be
+reliably broken to recover the key due to its (mis)use of RC4:
+[details](https://en.wikipedia.org/wiki/Fluhrer,_Mantin_and_Shamir_attack)).
+That being said, I'm not aware of a useful crypto attack here that would help us
+either recover the seed or predict future outputs, for our games' timeframes.
 
-TODO: if a seed is given and has enough randomness and is secret, there's not
-much we can do, and our "predict everything" dream is gone...
+If the seed that is given to `seedrandom` has enough entropy and is secret,
+there's not much we can do, and our Nostradamus "predict everything" dream is
+gone...
 
-TODO: ... it's logged in game logs. Could has saved a bunch of time
+Hold on, I remember this piece of code:
+```js
+// ... game.js
+exports.Blitz2024Challenge = class Blitz2024Challenge {
+    // ...
 
-TODO: from previous games, see that the server only seems to run X seeds: TODO list
+    constructor(engine, options) {
+        // ...
+        logger.info("Random seed: " + this.options.RANDOM_SEED);
+    }
+}
+```
 
-TODO: HERE WE GO
+... The seed is logged! Is there a useful pattern from game logs?
+
+I looked at all my previous games and, sure enough, a set of only 5 seeds is
+used (map names):
+- `Stardreamer`
+- `Nova_Explorer`
+- `Celestial_Voyager`
+- `Galactic_Guardian`
+- `Solar_Serenity`
+
+Well I certainly wish I had noticed that earlier. On the plus side, we did learn
+a bunch about `Math.random` prediction...
+
+Hey! That means we can fully predict games, doesn't it?
+
+HERE WE GO!
 
 ## Rust Nostradamus Bot
 
