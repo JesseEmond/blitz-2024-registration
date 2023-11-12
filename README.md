@@ -257,47 +257,107 @@ What's next?
 
 ## Rabbit Hole #1: What if Blitz was a CTF?
 
-TODO: would like to answer some questions about the server logic, but have to
-      play guessing games that I then verify with the local binary. Example: meteor splitting noise
+To improve my score and start predicting possible spawns/splits, I would have to
+answer some questions about the server's logic, but that means playing guessing
+games that I then verify with the local challenge binary.
 
-TODO: but what if I didn't have to guess? the logic is _right there_, in the
-      local binary. I like security challenges (Capture The Flag -- or CTF), I've
-      done some RE (link R0, define RE), what if I take a look at the binary to
-      answer my Qs?
+But, what if we didn't have to guess? The game's logic is _right there_, in a
+file called `./blitz-challenge-linux`. I like security challenges (Capture The
+Flag challenges -- or CTF). Though it's not an area that I know a lot about, I
+do have _some_ experience in Reverse Engineering (a lot of it through
+[RingZer0](https://ringzer0ctf.com/profile/2574/dysleixa)), where we try to
+understand what a binary is doing from the binary alone (e.g. by disassembling
+it and looking at assembly code). What if I use the local binary to answer my
+questions?
 
-TODO: This is maybe not a strategic use of my blitz time, but hey, it's a shiny
-      new thing I could do to laterally procrastinate improving my python heuristic!
+This is maybe not the most strategic use of my blitz time, but hey; it's a shiny
+new thing I can look at to
+[laterally procrastinate](https://www.structuredprocrastination.com/) instead of
+improving my simple bot's heuristic!
 
 ### Disassembling the local binary
 
-TODO: where is the binary from?
+First, what _is_ that binary? It's interesting that it seems to be a compiled
+binary and not, like, a Python-based app, a Jar, or some node app.
 
-TODO: run strings, find references to nodejs
+We can run `strings ./blitz-challenge-linux` to see some of the human-readable
+strings embedded in the binary, and -- oh wow, a lot of symbols in the strings
+suggest it is indeed NodeJS! ... As a packaged binary?
 
-TODO: look into nodejs 'compiling' to native executable, find possible tools,
-      including vercel/pkg
-
-TODO: confirmed through strings, great!
+If we read online about this a bit, we find that there are a couple of solutions
+to compile a node app to a native binary. One of these is
+[vercel/pkg](https://github.com/vercel/pkg), and some `strings` outputs
+definitely point to that.
 
 #### Unpacking `vercel/pkg` binaries
 
-TODO: unpkg tool
+Thankfully, someone already made a tool to "unpack" a `vercel/pkg` binary:
+[pkg-unpacker](https://github.com/LockBlock-dev/pkg-unpacker). I was also glad
+to see an example hardware reversing article making use of this tool and getting
+back the original JS files,
+[here](https://www.nozominetworks.com/blog/protecting-the-phoenix-unveiling-critical-vulnerabilities-in-phoenix-contact-hmi-part-2),
+but they make a mention that `pkg` will only package the original JS files as-is
+if the node package is public and does not have certain licenses.
 
-TODO: example CTF link, mentions private, mention package.json config
+Unfortunately for us, the unpacked `package.json` shows:
+```
+{
+    "name": "@blitz/challenge",
+    "private": true,
+	...
+}
+```
 
-TODO: stackexchange reversing vercel/pkg, many upvotes, no answer
+So no dice for the nice JS files. All we get are files in some binary format we
+don't know.
 
-TODO: vercel/pkg doc, mention V8 bytecode, mention note about security -- if anything learned through CTFs, is that security through obscurity given enough time with a dedicated person will be thwarted, this is a good reminder
+We're not the only ones that get stuck at that point, see this unanswered
+upvoted stackexchange answer:
+[stachexchange post](https://reverseengineering.stackexchange.com/questions/30921/decompiling-an-executable-compiled-by-vercel-pkg).
 
-TODO: vercel/pkg, we'll see more details, but:
-- Produces Script `cached_data` outputs -- that's what we need to reverse
-- Packages a NodeJS binary, with your scripts added to it
-- `pkg` instruments the NodeJS binary so that it has a "virtual filesystem" where
-  the cached sources are stored. Attempts to read the original source files
-  (e.g. with NodeJS imports) will go through this virtual filesystem and the
-  embedded file in the binary will be read instead of going to disk.
+This seems to be somewhat deliberate; `vercel-pkg` highlights the following
+benefits to the tool in the dev documentation (emphasis mine):
+> [...] it doesn't store your source JavaScript directly. runs your JavaScript
+> through the V8 compiler and produces a V8 snapshot, which has two nice
+> consequences:
+> - 1. Your code will start faster, because all the work of parsing the
+>      JavaScript source and so forth is already done
+> - 2. **Code is protected as it doesn’t live in the clear in the binary**
 
-TODO: how do we reverse those cached data files?
+To be fair, on the main GitHub page there is this note (emphasis mine):
+> While compiling to bytecode **does not make your source code 100% secure**, it
+> does add a small layer of security/privacy/obscurity to your source code.
+
+This is a good reminder of the limits of
+["security through obscurity"](https://en.wikipedia.org/wiki/Security_through_obscurity).
+If there's anything I've learned through CTFs, it's what patience and
+perseverance can do to "not 100% secure". :)
+
+At a high level, `vercel/pkg` works like this:
+- Runs all the package JS files through `new vm.Script(...)`, to access and
+  store their [`cachedData`](https://nodejs.org/api/vm.html#class-vmscript). As
+  we'll see later, this (among other things) contains the "V8 bytecode" that
+  NodeJS uses internally to represent parsed JavaScript (prior to generating
+  actual machine assembly);
+- Builds a NodeJS interpreter with patched changes, including having the cached
+  data of all the scripts appended as data inside it;
+- Instruments the NodeJS binary with a
+  [bootstrap JS file](https://github.com/vercel/pkg/blob/main/prelude/bootstrap.js)
+  that:
+  - Knows how to read its own interpreter's binary file to extract the packaged
+    payload data (cached scripts);
+  - Replaces JS filesystem operations to go through a virtual filesystem
+    abstraction that pretends that files starting with "/snapshot" are reading
+    the original scripts, when in reality it is extracting them from its own
+    payload data, see
+    [this code](https://github.com/vercel/pkg/blob/bb042694e4289a1cbc530d2938babe35ccc84a93/prelude/bootstrap.js#L599).
+
+This is an interesting approach overall, and now I appreciate a little bit more
+that someone already did the work of unpackaging the files by parsing this
+virtual filesystem with `pkg-unpacker`!
+
+That being said, we're still left with the question: how do we reverse engineer
+those unpacked cached data files?
 
 #### Ghidra NodeJS plugin
 
