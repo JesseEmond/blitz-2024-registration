@@ -1055,34 +1055,200 @@ itself was JS that was generated from Coveo's original Typescript code.
 Ouch! We're in for a ride!
 
 ### Answering Questions with Assembly
+Now that we can disassemble unpacked files, we can start crawling back out of
+our rabbit hole.
 
-TODO: tooling to RE all files (+ tooling to diff across versions)
+I wrote some tooling to reverse all the interesting packaged files:
+[`disassemble.sh`](disassembled_js/disassemble.sh).
+You can find the per-file result for the latest binary I disassembled in
+[this directory](disassembled_js/c9b1ac089c04df60393d0f251f0df7d2/). I also made
+a script to checksum the meaningful parts of the disassembly to make it easier
+to find diffs between versions as challenge bugfixes get applied (this was
+useful to spot a change that was made, which we'll see later):
+[`checksum_disassembled_files.sh`](disassembled_js/checksum_disassembled_files.sh).
 
-TODO: questions we'd like to answer. + practice on reversing V8 assembly
-1) Where is the meteor splitting logic?
-2) On meteor split, what is the source position?
-3) On meteor split, how is the velocity computed (angle + speed noise)?
-4) At what rate do we expect meteor spawns?
-5) What are parameters of genreal meteor spawning (velocity + position noise)?
-6) Are physics simulated within-tick, or done in steps of integer 'ticks'?
-7) How are random numbers generated?
+Let's sharpen our V8 disassembling skills by answering gradually more involved
+questions about the challenge:
+- 1. Are collisions detected within-tick or in discrete increments?
+- 2. Where is the meteor splitting logic?
+- 3. On meteor split, what is the source position?
+- 4. On meteor split, how is the velocity computed (angle & speed noise)?
+- 5. At what rate do we expect meteor spawns?
+- 6. What are the parameters of meteor spawns (velocity & position noise)?
+- 7. How are random numbers generated?
 
-#### Q1: Where is the meteor splitting logic?
+Don't worry, I'll spare you the disassembly from now on and just give my
+inferred JS-like code.
+
+#### Q1: Are collisions detected within-tick or in discrete increments?
+I started by looking at `game.js`.
+
+I found the module to look something like the following at the time, with some
+functions I didn't bother to reverse (and pretending there's no async involved):
+```js
+engine = import("@blitz/engine");
+error = import("./error");
+world = import("./world");
+vector = import("./vector");
+random = import("./random");
+meteor_infos = import("./meteor_infos");
+
+exports.WORLD_WIDTH = 1200;
+exports.WORLD_HEIGHT = 800;
+exports.Blitz2024Challenge = class Blitz2024Challenge {
+    DEFAULT_GAME_OPTIONS = {
+        RANDOM_SEED: Math.random(),
+        TICK_COUNT: 1000,
+        SCORE_MULTIPLIER: 1,
+        HEALTH_POINTS: Infinity,
+        WORLD_DIMENSIONS = {width: exports.WORD_WIDTH, height: exports.WORLD_HEIGHT},
+        CANNON_INITIAL_ORIENTATION_DEG: 0,
+        CANNON_POSITION: vector.Vector(140, exports.WORLD_HEIGHT / 2),
+        CANNON_MAX_ROTATION: 180,
+        CANNON_COOLDOWN_TICKS: 10,
+        BULLET_SPEED: 20,
+        BULLET_SIZE: 5,
+        METEOR_GENERATION_CONE_ANGLE: 30,
+        METEOR_GENERATION_DELAY_IN_TICKS: {start: 60, finish: 30},
+        CHEAT_DISABLE_METEOR_GENERATION: false,
+        CHEAT_GENERATE_PREDICTABLE_METEORS: [],
+    }
+
+    constructor(engine, options) {
+        this.lastTickErrors = [];
+        this.currentTickNumber = 1;
+        this.engine = engine;
+        this.options = { ...DEFAULT_GAME_OPTIONS, ...options };
+        logger.info("Random seed: " + this.options.RANDOM_SEED);
+    }
+
+    setup() { /* ... */ }
+
+    playOneTick(tick) {
+        this.currentTickNumber = tick;
+        if (this.isGameComplete()) {
+            return {gameComplete: true, gameResults {results: this.getGameResults()}};
+        }
+        this.updateGame();
+        if (!this.isGameComplete()) {
+            this.fetchAndApplyPlayerCommands();
+        }
+        return {
+            gameComplete: false,
+            gameState: this.serializeForViewer(),
+            errors: this.lastTickErrors,
+            // commands: ...
+        };
+    }
+
+    updateGame() {
+        if (this.world) {
+            this.world.update();
+        }
+    }
+};
+```
+
+A lot of things stand out, some of which we'll explore in follow-up questions:
+- Meteor generation constants come from here;
+- Updates happen before we send an action, i.e. the first tick info we receive
+  on the client is after 1 update tick;
+- The randomness in the game is seeded here, defaulting to `Math.random()` if
+  not overloaded;
+- There are some fun cheat options implemented;
+- There's an idea of "health points" that is supported, that would have been
+  tricky to balance as part of our bot!
+- Most of the game update logic really lives in `world`.
+
+If we reverse engineer `world.js`, we get something like this (some function
+names I came up with, they're likely lambdas in reality):
+```js
+// ...
+
+function update(world) {
+    if (this.tickCounter % this.getCurrentGenerationDelayInTicks() &&
+        !this.options.CHEAT_DISABLE_METEOR_GENERATION) {
+        let pos = Vector(this.width + 50, this.height * this.rng.random());
+        let radius = this.rng.random() * 50 + 50;
+        let angle = this.rng.random() * this.options.METEOR_GENERATION_CONE_ANGLE
+            + this.options.METEOR_GENERATION_CONE_ANGLE / 2 - 180;
+        let vel = Vector.fromPolarDeg(radius, angle);
+        this.meteors.push(Meteor.Build(pos, vel, MeteorType.Large));
+    }
+    this.options.CHEAT_GENERATE_PREDICTABLE_METEORS
+        .filter(isPredictedMeteorTick).forEach(buildPredictableMeteor);
+    this.findAndHandleCollisions();
+    this.meteors.forEach(meteorUpdate);
+    this.meteors = this.meteors.filter(meteorInBoundsY);
+    this.meteors.filter(hitPlanet).forEach(hurtHealth);
+    this.meteors = this.meteors.filter(meteorInBoundsX)
+        .filter(meteorIsNotDestroyed);
+    this.rockets.forEach(rocketUpdate);
+    this.rockets = this.rockets.filter(rocketInBoundsX)
+        .filter(rocketIsNotDestroyed);
+    this.tickCounter += 1;
+    this.cannon.update();
+}
+
+function findAndHandleCollisions() {
+    this.collisions = [];
+    this.rockets.flatMap(this, allRocketCollisions)
+        .sort(collisionSmallestTime)
+        .forEach(doHandleCollision);
+}
+
+function allRocketCollisions(rocket) {
+    return this.meteors.reduce(function(collisions, meteor) {
+        let collision = Projectile.checkCollisionDuringCurrentTick(rocket, meteor);
+        if (collision != null) {
+            collision = collision.clone();
+            collision.meteor = meteor;
+            collision.rocket = rocket;
+            return collisions.concat(collision)
+        }
+        return collisions;
+    }, []);
+}
+```
+
+Some new interesting notes:
+- Rockets aren't checked for Y out-of-bounds! I tested this to be sure -- if I
+  shoot a rocket directly up, for example, the server keeps sending me its
+  position even when it gets very deep in the negatives;
+- On a single tick, we find collisions between all rockets and all meteors,
+  and then _pick the one with the smallest time_.
+
+This last one suggests that the server is checking for collisions with
+continuous physics within-tick, but let's check `projectile.js` to be sure:
+
+```js
+geoUtils = import("./geoUtils");
+// ...
+function checkCollisionDuringCurrentTick(p1, p2) {
+    let intersection = geoUtils.movingCirclesIntersection(
+        p1.position, p1.velocity, p1.size,
+        p2.position, p2.velocity, p2.size);
+    return intersection.filter(timeBetween0and1).sort(smallestTime).at(0) ?? null;
+}
+```
+
+That settles it, then.
+
+**Answer: collisions are detected within-tick.**
+
+#### Q2: Where is the meteor splitting logic?
 TODO
 
-#### Q2: On meteor split, what is the source position?
+#### Q3: On meteor split, what is the source position?
 TODO
 
-#### Q3: On meteor split, how is the velocity computed (angle + speed noise)?
+#### Q4: On meteor split, how is the velocity computed (angle & speed noise)?
 TODO
 
-#### Q4: At what rate do we expect meteor spawns?
+#### Q5: At what rate do we expect meteor spawns?
 TODO
 
-#### Q5: What are parameters of meteor spawning (velocity + position noise)?
-TODO
-
-#### Q6: Are physics simulated within-tick, or done in steps of integer 'ticks'?
+#### Q6: What are the parameters of meteor spawns (velocity & position noise)?
 TODO
 
 #### Q7: How are random numbers generated?
