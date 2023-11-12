@@ -1078,9 +1078,15 @@ questions about the challenge:
 7. How are random numbers generated?
 
 Don't worry, I'll spare you the disassembly from now on and just give my
-inferred JS-like code.
+inferred JS-like code. I'll also collapse the sections by default, if you don't
+care about the details.
 
 #### Q1: Are collisions detected within-tick or in discrete increments?
+
+<details>
+
+<summary> **Answer**: collisions are detected within-tick.  </summary>
+
 I started by looking at `game.js`.
 
 I found the module to look something like the following at the time, with some
@@ -1237,11 +1243,15 @@ function checkCollisionDuringCurrentTick(p1, p2) {
 }
 ```
 
-That settles it, then.
+That settles it, then. Collisions are within-tick.
 
-**Answer**: collisions are detected within-tick.
+</details>
 
 #### Q2: Where is the meteor splitting logic?
+
+<details>
+
+<summary> **Answer**: in `world.handleMeteorSplit`. </summary>
 
 In `world.js` `findAndHandleCollisions()`, the call to the function
 `handleCollision` seems like a promising place to check:
@@ -1272,9 +1282,13 @@ function handleMeteorSplit(collision) {
 }
 ```
 
-**Answer**: `handleMeteorSplit`.
+</details>
 
 #### Q3: On meteor split, what is the source position?
+
+<details>
+
+<summary> **Answer**: Split meteors spawn on the position of the collision intersection. </summary>
 
 Let's see what `getMeteorsAfterExplosion` does, in `meteor.js`:
 ```js
@@ -1330,9 +1344,13 @@ This last point is interesting, I'm not sure I would have guessed that if I was
 still trying to simulate the game with guesswork. At least we didn't _fully_
 waste our time with reverse engineering.
 
-**Answer**: Split meteors spawn on the position of the collision intersection.
+</details>
 
 #### Q4: On meteor split, how is the velocity computed (angle & speed noise)?
+
+<details>
+
+<summary> **Answer**: the split angle is the parent's direction rotated by `explodesInto.approximateAngle` with speed +- 20% of `info.approximateSpeed`. </summary>
 
 We did see part of this earlier in `getMeteorsAfterExplosion`:
 
@@ -1378,11 +1396,14 @@ So the `0.8` multiplication is really discarded (maybe the original intent was
 to have collisions produce slightly slower meteors?), and the magnitude is
 really +- 20% the `approximateSpeed` that the server gives us in constants.
 
-**Answer**: the split angle is the parent's direction rotated by
-`explodesInto.approximateAngle` with speed +- 20% of
-`info.approximateSpeed`.
+</details>
 
 #### Q5: At what rate do we expect meteor spawns?
+
+<details>
+
+<summary> **Answer**: linear change from ~1/60 ticks at the start to ~1/30 ticks at the end. </summary>
+
 The code for this was in the first block of `world.update()`:
 ```js
 // ... world.js
@@ -1426,10 +1447,14 @@ We also get a spawn on tick `0` because this function gets called when
 `this.tickCounter` is still `0`. The first tick of "1" that we receive in the
 bot is because `tickCounter` is incremented as the end of `world.update()`.
 
-**Answer**: linear change from ~1/60 ticks at the start to ~1/30 ticks at the
-end.
+</details>
 
 #### Q6: What are the parameters of meteor spawns (velocity & position noise)?
+
+<details>
+
+<summary> **Answer**: Spawns appear at `(width+50, height*random())` with a velocity angle randomly picked with `165 + random() * 30` and speed of `Large` +- 20%. </summary>
+
 We already saw the answer for this in the `world.update()` disassembly:
 ```js
 // ... world.js
@@ -1465,8 +1490,7 @@ Note here that, similar to splits, spawns happen before meteor updates. This
 means that the first tick that the bot receives has this initial position +
 velocity.
 
-**Answer**: Spawns appear at `(width+50, height*random())` with a velocity angle
-randomly picked with `165 + random() * 30` and speed of `Large` +- 20%.
+</details>
 
 #### Q7: How are random numbers generated?
 TODO mention initial version using Math.random in meteors
