@@ -1725,21 +1725,52 @@ This brought me to a score of TODO.
 
 ### Monte Carlo Tree Search
 
-TODO on first tick, decide plan for full game within 1s
+Instead of picking a target with heuristics, we can now run a full simulation to
+compare various shooting options. I added a search for a sequence of moves, so
+that we give the full game plan on the first tick, within a 1s time budget.
 
-TODO use MCTS TODO link, normally use lib but like using blitz to reimplement & learn
+For the search, I used
+[Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
+Normally, it'd be best to re-use a library (e.g.
+[this one](https://docs.rs/mcts/latest/mcts/)), but I like using Blitz as an
+opportunity to re-implement things and learn.
 
-TODO MCTS steps
+To work with a search algorithm, we want to define our game as having search
+states (which can be seen as tree nodes) with possible actions on a state (which
+can be seen as node edges) that lead us to a new state (children nodes):
+- **State**: For our game, I create a
+  [`game_search_state.rs`](bot/src/game_search_state.rs) struct with the
+  `GameState` (active meteors & rockets and their positions, score, etc.) and
+  the already-targeted meteors.
+- **Actions**: Consider each meteor we could shoot at (current or future
+  predicted meteors), skipping ones we already shot or ones that we can't/won't
+  hit if we shot at them. Also include a "hold" action where we don't shoot yet.
 
-TODO search state generate actions: one for each meteor that we aren't already targeting, or hold
+MCTS works like this at a high level:
+- _Select_: Start from our root state, select successive children nodes using
+  some strategy until we reach a leaf node that has not been fully expanded yet;
+- _Expand_: Choose one of the actions that has not been expanded yet on the
+  node;
+- _Simulation_: Playout the game until the end, either with random moves or with
+  heuristics;
+- _Backpropagation_: Update information of the nodes we explored along the way
+  before simulation. This information will inform future node selections.
 
-TODO each action "resolves" the game state to figure out the score at the end
+For heuristic purposes (e.g. to know which node to expand, or when doing
+playouts), I simulated the tentative action while there are rockets left (I
+named this "resolving" the state) to see what score a state will lead us to if
+left as-is.
 
-TODO playout "heavy playout", picking greedy best action based on heuristic, instead of just random
+Doing a simulation with a heuristic is sometimes called "heavy playout", instead
+of doing random simulation. I saw better results thorought from doing that,
+presumably because the playouts are not super cheap and we don't have time to do
+a lot of exploration of the actions space with just randomness.
 
-TODO score best seen path, use that
+I plugged this search into [`planner.rs`](bot/src/planner.rs), which just runs
+a search on the first tick (within 1s) and returns the best seen path. The
+Python bot will then just follow this plan for the rest of the game.
 
-TODO score
+I was able to get a score of TODO points with this strategy.
 
 ### MCTS tweaks
 
