@@ -362,52 +362,140 @@ those unpacked cached data files?
 #### Ghidra NodeJS plugin
 
 ##### Someone did the work for us!
-TODO: fantastic blogpost link
+That's when I found
+[a great blog post](https://swarm.ptsecurity.com/how-we-bypassed-bytenode-and-decompiled-node-js-bytecode-in-ghidra/)
+where the authors not only dive into the internals of V8 (JS engine used in
+NodeJS) in great detail, but they also describe how they went about writing a
+Ghidra add-on to reverse engineer such files!
 
-TODO: amazing, tool just for us
+If you are not familiar with [Ghidra](https://ghidra-sre.org/), it is an
+open-source reverse engineering software developed by the NSA. Such software is
+invaluable to analyze and explore binaries. One great feature is that it can
+generate C-like equivalent to the disassembled binary, with the option to rename
+variables & functions as you progressively understand the binary's logic more
+and more. This feature is one of the reasons why the authors of the plugin
+decided to leverage Ghidra instead of writing a standalone tool. Another big
+advantage of Ghidra is that it is free, which is a lot more approachable than an
+[Ida license](https://www.hex-rays.com/cgi-bin/quote.cgi/products) for a hobby!
 
-TODO: Ghidra description + decompilation tool
+So we just have to use that plugin and we're golden, ... right?
 
-##### Okay we just need to prepare it
-TODO: plugin repository only, need to build it ourselves.... TODO painful, link doc
+##### Okay, some assembly required
+Alright, so the
+[repository](https://github.com/PositiveTechnologies/ghidra_nodejs) for the
+plugin is archived and read-only now and the only release version is for an
+older version of Ghidra. I couldn't find a more recent one.
 
-TODO: tried... V8 bytecode not detected on the file -- bad sign. Forced it, nothing.
+There are instructions to build it ourselves though, let's do that. We need to
+install Eclipse, a bunch of dependencies, learn more about Ghidra plugins and
+how they require running a Maven build to run a command that creates an Eclipse
+project type for plugin development that we can later use to open the existing
+GitHub plugin code and build plugins -- oh but now the Ghidra plugin API changed
+in the newer version and we need to fix the repository to make it build with
+Ghidra 10.4.
 
-##### Alright we just need to push it a bit
-TODO: noticed V8 versions in the repo (link).
+I'll be honest, I already (purposefully?) dropped from my memory the
+step-by-step details it took to get it working, but I remember how annoying it
+was. I was really grateful for finding
+[this link](https://voidstarsec.com/blog/ghidra-dev-environment) at some point,
+which really helped walk me through it.
 
-TODO: vercel/pkg actually has a nice feature where you can invoke the NodeJS
-      interpreter that's packaged, instead of invoking the default script that
-      was packaged in it. TODO include command + link
+But, it now builds! Now, we just have to load one of the unpacked V8 bytecode
+files, say `game.js`... Annnnnd file type not auto detected by the add-on,
+that's a bad sign. I tried to force pick the V8 x64 option, but we get no useful
+disassembly, no dice.
 
-TODO: use this to get NodeJS version + V8 version. From V8 version, find that it
-      is not supported by the plugin. Can we just add it?
+##### Alright, we just need a crowbar
+Maybe the plugin doesn't support our NodeJS' V8 version. It lists
+[supported versions](https://github.com/PositiveTechnologies/ghidra_nodejs/blob/main/data/v8_versions.json),
+what's ours?
 
-TODO: to confirm I have the right version and that the script would be compatible,
-      I computed the "version hash" the same way that the plugin uses to check if
-      a version is supported TODO link, see script TODO, and indeed found that it
-      matches what I see in the file (TODO example xxd)
+`vercel/pkg` actually has a nice hidden feature for us where the packaged binary
+it creates can be invoked to bypass the packaged application and open an
+interpreter instead. This feature is alluded to
+[in its bootstrap code](https://github.com/vercel/pkg/blob/bb042694e4289a1cbc530d2938babe35ccc84a93/prelude/bootstrap.js#L65), and we can run commands to figure out the versions in-use:
+- `PKG_EXECPATH=PKG_INVOKE_NODEJS ./blitz-challenge-linux -v` tells us we are
+  using NodeJS v18.5.0;
+- `PKG_EXECPATH=PKG_INVOKE_NODEJS ./blitz-challenge-linux -p process.versions.v8`
+  tells us we are using V8 `v10.2.154.4-node.8`.
 
-TODO: tried that and... nope.
+The plugin only supports V8 versions
+[up to 8.6.395.17](https://github.com/PositiveTechnologies/ghidra_nodejs/blob/7e2d5a9fad637f8e54809d40434879a5beb3fbba/data/v8_versions.json#L2),
+can we just add ours?
 
-##### Maybe we're just holding it wrong
-TODO: maybe a lot changed between X and Y? To confirm wrote script TODO that
-      parses the script data cache, very closely following GITHUB LINK, the V8
-      code in the exact NodeJS version we're using. It's essentially _another_
-      bytecode that is used for serialization/deserialization
+I wanted to make sure I'm looking at the right version and that the plugin
+_could_ be compatible with the `pkg` outputs we have (since the blog post was
+more aimed at reversing `bytenode` file outputs), so I checked how the plugin
+checks for version match. It is done based on a
+[hash of the version components](https://github.com/PositiveTechnologies/ghidra_nodejs/blob/7e2d5a9fad637f8e54809d40434879a5beb3fbba/src/main/java/v8_bytecode/V8_VersionDetector.java#L32-L44),
+compared with a stored value in the `cachedData` output.
 
-TODO: and... that's a pretty big mismatch, looks like many new concepts were
-      introduced TODO examples.
+I wrote a script to compute the hash:
+[`v8_script_cache_version_hashes.py`](disassembled_js/v8_script_cache_version_hashes.py),
+and running it on V8 version string `10.2.154.4` gave a 64-bit hash of
+`af632352`, which indeed matched the stored version hash in our files:
+```
+xxd ./blitz-challenge-unpacked/snapshot/blitz-2024/challenge/dist/action.js | head
 
-TODO: This plugin would be useful living repo of V8 versions, but repo is stale.
-      Extending the plugin to support TODO Y sounded appealing, but too much
-      work for the blitz timeframe, and the repo is archived after all.
+Outputs:
+00000000: 6205 dec0 5223 63af af01 0000 2f12 c5a8  b...R#c...../...
+[...]
 
-TODO: overall, suprised by lack of live tooling for reversing such binaries, maybe
-      I missed it, but unlike other platforms when it comes to reversing
+I.e. the 2nd 32-bit integer is 522363af, which is 0xaf632352 stored in
+little-endian! We'll see next what the 1st 32-bit integer represents.
+```
 
-TODO: reality of internal bytecode format, hardly a need for a stable format --
-      internally just needs to stay in sync
+So I added `"10.2.154.4"` to the list of versions and rebuilt the plugin.
+
+The files would still not be auto detected as V8 x64. By looking at
+[the plugin's logic](https://github.com/PositiveTechnologies/ghidra_nodejs/blob/7e2d5a9fad637f8e54809d40434879a5beb3fbba/src/main/java/v8_bytecode/V8_bytecodeLoader.java#L57)
+to decide if a file is supported, I saw that it checks for a magic value as the
+first 32-bits int: `0xC0DE0000` xor'ed with some constant `INSTANCE_SIZE`, set
+to `0x03BE`. Our files have `0xC0DE0562` (see above, again in little-endian), so
+I tried changing the `INSTANCE_SIZE` to `0x562`, rebuilt, and... Our file type
+was auto-detected!
+
+_But_, still no useful disassembly...
+
+##### Maybe we're holding it wrong?
+Maybe "crowbarring" our version in is not enough (who would have thought??).
+Looks like we'll have to learn a little bit more about how the plugin works,
+starting with parsing the input data.
+
+To do so, it is very helpful to follow the logic internal to our V8 version to
+parse `cachedData`,
+[starting here after the header](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/snapshot/object-deserializer.cc#L43).
+Interestingly, the serialized format is a bytecode on its own -- a serialization
+bytecode! I wrote a Python script to parse it at a very high level, just enough
+to get the overall structure:
+[`parse_v8_script_cache.py`](disassembled_js/parse_v8_script_cache.py).
+
+Then, I compared the data I was parsing following
+[V8 version `10.2.154.4`'s code](https://github.com/nodejs/node/tree/v18.5.0/deps/v8)
+in NodeJS `v18.5.0` with how the Ghidra plugin
+[was parsing it](https://github.com/PositiveTechnologies/ghidra_nodejs/blob/7e2d5a9fad637f8e54809d40434879a5beb3fbba/src/main/java/v8_bytecode/allocator/JscParser.java#L131),
+starting with the headers.
+
+##### Nope, nope, nope.
+
+Right away, it looks like many things changed between V8 `8.6.395.17` and V8
+`10.2.154.4`, including new serialization concepts/abstractions (e.g. objects
+seem like they are no longer laid out in the same "space" order, serialization
+bytecodes have changed, etc.) From reading the
+[blog post](https://swarm.ptsecurity.com/how-we-bypassed-bytenode-and-decompiled-node-js-bytecode-in-ghidra/)
+again, the serialization format is not trivial either, with pointers to earlier
+serialized objects, repeats, many different encodings, etc.
+
+It would be nice to work through the changes and make the plugin functional for
+later versions. I was surprised by the general lack of up-to-date tooling to
+reverse such applications (that I could find!) compared to other platforms, and
+having an active non-archived repository with broad V8 versions support would be
+quite nice. This might require active contributors, though, since the reality of
+this bytecode being internal to V8 is that there really isn't much of a need for
+a very stable API -- versions can change as needed.
+
+Updating the plugin seemed non-trivial for a blitz timeframe, and this rabbit
+hole is deep enough.
 
 #### Reversing `vercel/pkg` outputs
 TODO: but not giving up, learned a lot about V8 internals, and I _know_ NodeJS
