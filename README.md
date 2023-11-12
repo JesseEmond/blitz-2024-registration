@@ -1085,7 +1085,7 @@ care about the details.
 
 <details>
 
-<summary> **Answer**: collisions are detected within-tick.  </summary>
+<summary> <b>Answer</b>: collisions are detected within-tick. </summary>
 
 I started by looking at `game.js`.
 
@@ -1251,7 +1251,7 @@ That settles it, then. Collisions are within-tick.
 
 <details>
 
-<summary> **Answer**: in `world.handleMeteorSplit`. </summary>
+<summary> <b>Answer</b>: in <i>world.handleMeteorSplit</i>. </summary>
 
 In `world.js` `findAndHandleCollisions()`, the call to the function
 `handleCollision` seems like a promising place to check:
@@ -1288,7 +1288,7 @@ function handleMeteorSplit(collision) {
 
 <details>
 
-<summary> **Answer**: Split meteors spawn on the position of the collision intersection. </summary>
+<summary> <b>Answer</b>: Split meteors spawn on the position of the collision intersection. </summary>
 
 Let's see what `getMeteorsAfterExplosion` does, in `meteor.js`:
 ```js
@@ -1350,7 +1350,7 @@ waste our time with reverse engineering.
 
 <details>
 
-<summary> **Answer**: the split angle is the parent's direction rotated by `explodesInto.approximateAngle` with speed +- 20% of `info.approximateSpeed`. </summary>
+<summary> <b>Answer</b>: the split angle is the parent's direction rotated by <i>explodesInto.approximateAngle</i> with speed +- 20% of <i>info.approximateSpeed</i>. </summary>
 
 We did see part of this earlier in `getMeteorsAfterExplosion`:
 
@@ -1402,7 +1402,7 @@ really +- 20% the `approximateSpeed` that the server gives us in constants.
 
 <details>
 
-<summary> **Answer**: linear change from ~1/60 ticks at the start to ~1/30 ticks at the end. </summary>
+<summary> <b>Answer</b>: linear change from ~1/60 ticks at the start to ~1/30 ticks at the end. </summary>
 
 The code for this was in the first block of `world.update()`:
 ```js
@@ -1453,7 +1453,7 @@ bot is because `tickCounter` is incremented as the end of `world.update()`.
 
 <details>
 
-<summary> **Answer**: Spawns appear at `(width+50, height*random())` with a velocity angle randomly picked with `165 + random() * 30` and speed of `Large` +- 20%. </summary>
+<summary> <b>Answer</b>: Spawns appear at <i>(width+50, height*random())</i> with a velocity angle randomly picked with <i>165 + random() * 30</i> and speed of <i>Large</i> +- 20%. </summary>
 
 We already saw the answer for this in the `world.update()` disassembly:
 ```js
