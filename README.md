@@ -1414,12 +1414,8 @@ function getCurrentGenerationDelayInTicks() {
 }
 ```
 
-This is based on this setting in options:
-```js
-// ... game.js
-
-METEOR_GENERATION_DELAY_IN_TICKS: {start: 60, finish: 30}
-```
+This is based on this setting in `game.js` options that we saw earlier:
+`{start: 60, finish: 30}`.
 
 In effect, this generates meteors at a rate of ~`1/60` ticks at the start, and
 at a rate of `~1/30` ticks at the end, with a linear change of the rates as we
@@ -1463,12 +1459,7 @@ for meteor splits, this will be ignored and set based on `+- 20%` the `Large`
 meteor speed, as part of `Meteor.Build`.
 - The angle is picked randomly based on `METEOR_GENERATION_CONE_ANGLE`.
 
-We saw `METEOR_GENERATION_CONE_ANGLE` defined in `game.js`:
-```js
-// ... game.js
-
-METEOR_GENERATION_CONE_ANGLE: 30
-```
+We saw `METEOR_GENERATION_CONE_ANGLE` defined in `game.js`, set to `30`.
 
 Note here that, similar to splits, spawns happen before meteor updates. This
 means that the first tick that the bot receives has this initial position +
