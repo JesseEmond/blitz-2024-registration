@@ -1343,7 +1343,7 @@ waste our time with reverse engineering.
 
 <details>
 
-<summary> <b>Answer</b>: the split angle is the parent's direction rotated by <i>explodesInto.approximateAngle</i> with speed +- 20% of <i>info.approximateSpeed</i>. </summary>
+<summary> <b>Answer</b>: the split angle is the parent's direction rotated by <i>explodesInto.approximateAngle</i> (no noise) with speed +- 20% of <i>info.approximateSpeed</i>. </summary>
 
 We did see part of this earlier in `getMeteorsAfterExplosion`:
 ```js
@@ -1484,10 +1484,54 @@ velocity.
 </details>
 
 #### Q7: How are random numbers generated?
-TODO mention initial version using Math.random in meteors
 
-TODO mention later version changing to seedrandom TODO link, no doubt to make
-games repeatable
+<details>
+
+<summary> <b>Answer</b>: TODO </summary>
+
+For meteor spawns, the position Y randomness is based on `this.rng.random()`.
+This `rng` is an instance that comes from the `random.js` file:
+```ts
+// ... random.js
+import seedrandom = require('seedrandom');
+exports.Random = class Random {
+    rng: any
+
+    constructor(seed: any) {
+        this.rng = seedrandom(seed.toString());
+    }
+
+    random() {
+        this.rng();
+    }
+};
+```
+
+This is using the [`seedrandom`](https://www.npmjs.com/package/seedrandom)
+NodeJS package, which allows getting repeatable random number sequences by
+providing a seed. This makes sense from the game's perspective -- it can be
+useful to re-run games as-is.
+
+The `seed` we saw is coming from the `RANDOM_SEED` option, coming in `game.js`.
+By default, this gets initialized to `Math.random()`, and we see that it will be
+used as a seed by running `.toString()` on it.
+
+If a `RANDOM_SEED` is set through a command line argument, however, it will
+instead use that (which I checked by reversing `challenge-launcher/index.js`).
+The command line flag `randomSeed`, or its alias `mapName` both get used as a
+seed.
+
+For the randomness in splits & spawns velocity multiplier (+- 20%), however,
+there is something interesting. The initial version of the challenge I
+disassembled ([here](disassembled_js/328e68f033f493ba41575fe85f335210)), it was
+using `Math.random()`, and not this `rng` seeded random number generator!
+
+I imagine it was fixed at some point to allow repeatable games, because in a
+later version I disassembled
+([here](disassembled_js/c9b1ac089c04df60393d0f251f0df7d2)), the randomness was
+switched to use the `rng` instance.
+
+</details>
 
 ## Rabbit Hole #2: Nostradamus
 
