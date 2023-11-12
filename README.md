@@ -98,9 +98,9 @@ TODO(emond): Include example game vid, + score above.
 ## Simple Bot
 
 To start things off, I wrote some Python code to:
-- 1) aim ahead of a meteor to hit it, picking & tracking existing targets;
-- 2) simulate server tick logic to verify that our intended hits will happen;
-- 3) infer what the server did between ticks to verify our predictions.
+1. aim ahead of a meteor to hit it, picking & tracking existing targets;
+2. simulate server tick logic to verify that our intended hits will happen;
+3. infer what the server did between ticks to verify our predictions.
 
 ### Aim & Shoot
 
@@ -205,9 +205,9 @@ want to, to some degree, simulate the logic the server is using to update
 rockets & meteors and check for hits.
 
 We want to do this in primarily 2 cases:
-- 1) When picking a target, to make sure we'd actually hit it;
-- 2) On every tick, to see if we should update our active targets to match
-     reality (e.g. due to an unexpected spawn or split interaction).
+1. When picking a target, to make sure we'd actually hit it;
+2. On every tick, to see if we should update our active targets to match
+   reality (e.g. due to an unexpected spawn or split interaction).
 
 But simulating the server logic involves _some_ amount of guess work: are
 collisions checked at the sub-tick level? In what order are collisions checked?
@@ -320,9 +320,9 @@ benefits to the tool in the dev documentation (emphasis mine):
 > [...] it doesn't store your source JavaScript directly. runs your JavaScript
 > through the V8 compiler and produces a V8 snapshot, which has two nice
 > consequences:
-> - 1. Your code will start faster, because all the work of parsing the
->      JavaScript source and so forth is already done
-> - 2. **Code is protected as it doesn’t live in the clear in the binary**
+> 1. Your code will start faster, because all the work of parsing the
+>    JavaScript source and so forth is already done
+> 2. **Code is protected as it doesn’t live in the clear in the binary**
 
 To be fair, on the main GitHub page there is this note (emphasis mine):
 > While compiling to bytecode **does not make your source code 100% secure**, it
@@ -806,9 +806,9 @@ For example, `true` would disassemble to:
 ```
 
 This will:
-- 1) Store the value `true` in the accumulator register;
-- 2) Move the value of the accumulator to register `r0`;
-- 3) Return, with the value of the accumulator still having `true`.
+1. Store the value `true` in the accumulator register;
+2. Move the value of the accumulator to register `r0`;
+3. Return, with the value of the accumulator still having `true`.
 
 The following function:
 ```js
