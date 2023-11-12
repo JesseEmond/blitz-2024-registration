@@ -691,7 +691,7 @@ And... Finally! SUCCESS!
 
 Let's take a moment to define "success", here. For `action.js`, we get this:
 
-```
+```js
 << OUTPUTTING DISASSEMBLY BEGIN >>
 === [0x2ce3b5f64178] DISASSEMBLY ===
 Parameter count 1
