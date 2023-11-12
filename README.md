@@ -178,7 +178,6 @@ Solving for this takes a bit more work, so I'll refer to
 [this answer](https://stackoverflow.com/a/50722146) for the specifics. We can
 simplify some of the expressions with vector functions like `len_sq` and `dot`,
 to then have a function like:
-
 ```py
 def collision_times(x: MovingCircle,
                     y: MovingCircle) -> Optional[Tuple[float, float]]:
@@ -527,10 +526,10 @@ Source Position Table (size = 8)
 
 That's something!
 
-If you're couple-weeks-ago-me, you might feel dumb and think you just wasted all
-this time, because what if you just write a script that loads a `Script` from
-cached data and outputs it, would that show you the disassembly right away, e.g.
-if you had a JS file like:
+If you're couple-weeks-ago-me, you might worry that you just wasted all this
+time, because what if you just write a script that loads a `Script` from cached
+data and outputs it, would that show you the disassembly right away, e.g. if you
+had a JS file like:
 ```js
 function my_loading_function() {
   const fs = require('fs');
@@ -690,7 +689,6 @@ And... Finally! SUCCESS!
 ### Reverse Engineering V8 Assembly
 
 Let's take a moment to define "success", here. For `action.js`, we get this:
-
 ```js
 << OUTPUTTING DISASSEMBLY BEGIN >>
 === [0x2ce3b5f64178] DISASSEMBLY ===
@@ -1025,7 +1023,6 @@ realize that this is something that Typescript includes in its transpiled JS of
 modules. Sure enough, the following Typescript maps almost exactly to the same
 JS:
 [online typescript transpiler](https://www.typescriptlang.org/play?esModuleInterop=false&target=99&module=1&allowSyntheticDefaultImports=false#code/KYDwDg9gTgLgBMAdgVwLZwIIGMYEsKIAqAnmMAM5wDeAsAFACQASgPKEaECicAvHAESt2XfgBp6DADIsWAaQ68B0uRzESAygAkZhRfy061dAL5A)
-
 ```ts
 export enum ActionTypes {
     ROTATE = "ROTATE",
@@ -1227,7 +1224,6 @@ Some new interesting notes:
 
 This last one suggests that the server is checking for collisions with
 continuous physics within-tick, but let's check `projectile.js` to be sure:
-
 ```js
 // ... projectile.js
 
@@ -1255,7 +1251,6 @@ That settles it, then. Collisions are within-tick.
 
 In `world.js` `findAndHandleCollisions()`, the call to the function
 `handleCollision` seems like a promising place to check:
-
 ```js
 // ... world.js
 
@@ -1272,7 +1267,6 @@ function handleCollision(collision) {
 ```
 
 So `handleMeteorSplit`, then!
-
 ```js
 // ... world.js
 
@@ -1309,7 +1303,6 @@ So it appears to be set to `intersection`. This comes from
 `geoUtils.movingCirclesIntersection`.
 
 Let's reverse `geoUtils.js`:
-
 ```js
 // ... geoUtils.js
 
@@ -1353,7 +1346,6 @@ waste our time with reverse engineering.
 <summary> <b>Answer</b>: the split angle is the parent's direction rotated by <i>explodesInto.approximateAngle</i> with speed +- 20% of <i>info.approximateSpeed</i>. </summary>
 
 We did see part of this earlier in `getMeteorsAfterExplosion`:
-
 ```js
 // ... meteor.js
 
@@ -1374,7 +1366,6 @@ So it might suggest that:
 Turns out, 1) is true (so `approximateAngle` in the `explodesInto` constants we
 get from the server is really not approximate!), but 2) is not -- the details
 are in `Meteor.Build`:
-
 ```js
 // ... meteor.js
 
