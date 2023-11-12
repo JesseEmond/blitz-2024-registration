@@ -1774,34 +1774,78 @@ I was able to get a score of TODO points with this strategy.
 
 ### MCTS tweaks
 
-TODO during playout: sometimes randomly pick action TODO RL parallel
+I then spent a bit improving the MCTS search, to try and find better sequences
+of actions.
 
-TODO score >4900, would be great to get 5000...
+One quick change to improve exploration was to add a change during playout to
+sometimes pick a random action, based on a probability (in practice: 5%). This
+is like
+[`-greedy`](https://en.wikipedia.org/wiki/Reinforcement_learning#Exploration) in
+Reinforcement Learning. Doing this instead of tweaking the exploration constant
+[`c` in MCTS' UCT](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Exploration_and_exploitation)
+consistently gave better results.
 
-TODO search state allow actions to mess with predictions (e.g. hit a meteor before some prediction we made, will change rng order) -- just update hits when that happens
+This started giving me scores in the >4900 range!
 
-TODO: incremental MCTS, run 800ms every tick, still walk on 'best seen path'
+I really wanted to break the 5000 points barrier, so I kept trying other ideas
+to make sure the search state can capture better solutions, and that our search
+can find them:
+- In the search state, allow actions to mess with previously planned hits (e.g.
+  if we hit a meteor before some future prediction we made, this will change the
+  RNG order and make our previous predictions incorrect). Instead, just update
+  the list of predicted hits when this happens;
+- Run MCTS for a 800ms _every tick_, instead of planning the entire game on tick
+  #1. This leads to pretty long games (~15 mins), but gives us more time to
+  search the late game state space.
+- Instead of picking the next move based on the MCTS node that has the most
+  visits, I always keep track of the "best seen path" and follow it.
+- Consider more aiming options instead of just the position where the rocket
+  and meteor centers would collide. Aiming the edges of the meteor can lead to
+  hits previously impossible (e.g. on the edge of the cannon), or hits that keep
+  the splits in-game for longer;
+- [SP-MCTS](https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf)
+  tweak to the UCT formulation, changes geared for single-player game usages of
+  MCTS;
+- When we find a good playout path (e.g. >= our best seen score), backpropagate
+  through the entire playout paths (including nodes that haven't been expanded
+  yet).
 
-TODO: consider many aim options (instead of just center)
-
-TODO: SP-MCTS link, UCT variation
-
-TODO: backprop through entire playout paths that are >= best
+With all this, I was able to locally get scores in the 4955 range. Time to score
+on the server!
 
 ### Out of Memory
 
-TODO: OOM on server, beefy desktop, added TODO link lib to print mem usage,
-      at ~1GB tick gets super slow (...paging?)
+And... I got a score of -1.
 
-TODO: when tree gets too big, reset MCTS (but keep best path). This is also
-      somewhat inspired by SP-MCTS meta search
+My bot would suddenly stop in the middle of the game it looked like. I added
+logs, and all ticks would take ~800ms, when suddenly a tick would take many
+_seconds_!
 
-TODO: from offline, saw a 4980, was aiming for it
+I got a beefy desktop not too long ago, so I suspected that it might be due to
+excessive memory usage that would be fine locally but not on server. I added
+[a lib](https://docs.rs/memory-stats/latest/memory_stats/) to print memory stats
+per tick, and sure enough the breakage would happen close to the ~1GB mark.
+Maybe the virtualization that runs our bot on server has ~1GB configured, at
+which point it will start paging out memory or similar.
 
-TODO: ... and 5000pts!
+To work around this, I added logic so that when the tree goes past a limit of
+number of nodes, we reset the MCTS tree completely (but keep the best path
+still). This is also somewhat inspired by the "meta search" mentioned in the 
+[SP-MCTS paper](https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf),
+where they find that running multiple MCTS from scratch gave better results then
+one long-running MCTS (with the same compute budget).
+
+From offline, this change surprisingly... Gave better scores? I saw that 4980
+was now possible!
+
+So I ran it on the server and... **5000 points**!
 
 ## Winning Game
+Here is the final game:
 TODO: include video 5000pts
+
+TODO: note about dodging
+TODO: note about weirdness
 
 ### Post-Blitz Follow-ups
 TODO: tried a few last things, offline:
