@@ -1101,7 +1101,7 @@ exports.Blitz2024Challenge = class Blitz2024Challenge {
         TICK_COUNT: 1000,
         SCORE_MULTIPLIER: 1,
         HEALTH_POINTS: Infinity,
-        WORLD_DIMENSIONS = {width: exports.WORD_WIDTH, height: exports.WORLD_HEIGHT},
+        WORLD_DIMENSIONS = {width: exports.WORLD_WIDTH, height: exports.WORLD_HEIGHT},
         CANNON_INITIAL_ORIENTATION_DEG: 0,
         CANNON_POSITION: vector.Vector(140, exports.WORLD_HEIGHT / 2),
         CANNON_MAX_ROTATION: 180,
@@ -1163,15 +1163,15 @@ A lot of things stand out, some of which we'll explore in follow-up questions:
 If we reverse engineer `world.js`, we get something like this (some function
 names I came up with, they're likely lambdas in reality):
 ```js
-// ...
+// ... world.js
 
 function update(world) {
     if (this.tickCounter % this.getCurrentGenerationDelayInTicks() &&
         !this.options.CHEAT_DISABLE_METEOR_GENERATION) {
         let pos = Vector(this.width + 50, this.height * this.rng.random());
         let radius = this.rng.random() * 50 + 50;
-        let angle = this.rng.random() * this.options.METEOR_GENERATION_CONE_ANGLE
-            + this.options.METEOR_GENERATION_CONE_ANGLE / 2 - 180;
+        let angle = 180 - this.options.METEOR_GENERATION_CONE_ANGLE / 2
+            + this.rng.random() * this.options.METEOR_GENERATION_CONE_ANGLE;
         let vel = Vector.fromPolarDeg(radius, angle);
         this.meteors.push(Meteor.Build(pos, vel, MeteorType.Large));
     }
@@ -1215,15 +1215,20 @@ Some new interesting notes:
 - Rockets aren't checked for Y out-of-bounds! I tested this to be sure -- if I
   shoot a rocket directly up, for example, the server keeps sending me its
   position even when it gets very deep in the negatives;
+- Collisions are checked before the update step;
 - On a single tick, we find collisions between all rockets and all meteors,
-  and then _pick the one with the smallest time_.
+  and then _handle them in the order of their collision time_.
 
 This last one suggests that the server is checking for collisions with
 continuous physics within-tick, but let's check `projectile.js` to be sure:
 
 ```js
+// ... projectile.js
+
 geoUtils = import("./geoUtils");
+
 // ...
+
 function checkCollisionDuringCurrentTick(p1, p2) {
     let intersection = geoUtils.movingCirclesIntersection(
         p1.position, p1.velocity, p1.size,
@@ -1259,6 +1264,8 @@ function handleCollision(collision) {
 So `handleMeteorSplit`, then!
 
 ```js
+// ... world.js
+
 function handleMeteorSplit(collision) {
     collision.meteor.getMeteorsAfterExplosion(collision.intersection)
         .forEach(addMeteor);
@@ -1277,7 +1284,7 @@ function getMeteorsAfterExplosion(intersection) {
     return this.meteorInfos.explodesInto.map(function(explode) {
         return Meteor.Build(
             intersection,
-            this.velocity.rotate(explode.rotateionRad).multiply(0.8),
+            this.velocity.rotate(explode.rotationRad).multiply(0.8),
             explode.meteorType)
     });
 }
@@ -1310,16 +1317,165 @@ function movingCirclesIntersection(a_pos, a_vel, a_size, b_pos, b_vel, b_size) {
 }
 ```
 
+So meteor splits will spawn on the position of the collision intersection.
+
+Two interesting notes here:
+- The server does `meteorUpdate` _after_ this, so our Bot will see the position
+  of the collision intersection + one tick of velocity update;
+- Even though the collision happens in the middle of a tick (e.g. `t=0.43`), the
+  split meteor gets a full tick of velocity update (effectively got to move
+  `1.43` ticks).
+
+This last point is interesting, I'm not sure I would have guessed that if I was
+still trying to simulate the game with guesswork. At least we didn't _fully_
+waste our time with reverse engineering.
+
 **Answer**: Split meteors spawn on the position of the collision intersection.
 
 #### Q4: On meteor split, how is the velocity computed (angle & speed noise)?
-TODO
+
+We did see part of this earlier in `getMeteorsAfterExplosion`:
+
+```js
+// ... meteor.js
+
+function getMeteorsAfterExplosion(intersection) {
+    return this.meteorInfos.explodesInto.map(function(explode) {
+        return Meteor.Build(
+            intersection,
+            this.velocity.rotate(explode.rotationRad).multiply(0.8),
+            explode.meteorType)
+    });
+}
+```
+
+So it might suggest that:
+1. The velocity angle is a direct offset of the parent, with no noise;
+2. The velocity magnitude is 0.8 the parent's.
+
+Turns out, 1) is true (so `approximateAngle` in the `explodesInto` constants we
+get from the server is really not approximate!), but 2) is not -- the details
+are in `Meteor.Build`:
+
+```js
+// ... meteor.js
+
+function Build(pos, vel, typ) {
+    let info = options.METEOR_TYPE_INFOS.get(typ);
+    if (!info) {
+        throw Error("Unknown meteor '" + typ + "'")
+    }
+    if (vel.magnitude > 0 && info.speed) {
+        // The multiplier below is 0.8 to 1.2 (+- 20% the speed constant).
+        let multiplier = Math.random() * 0.4 + 0.8;
+        vel = vel.normalized.multiply(info.speed * multiplier);
+    }
+    return Meteor(pos, vel, typ, info)
+}
+```
+
+So the `0.8` multiplication is really discarded (maybe the original intent was
+to have collisions produce slightly slower meteors?), and the magnitude is
+really +- 20% the `approximateSpeed` that the server gives us in constants.
+
+**Answer**: the split angle is the parent's direction rotated by
+`explodesInto.approximateAngle` with speed +- 20% of
+`info.approximateSpeed`.
 
 #### Q5: At what rate do we expect meteor spawns?
-TODO
+The code for this was in the first block of `world.update()`:
+```js
+// ... world.js
+
+function update(world) {
+    if (this.tickCounter % this.getCurrentGenerationDelayInTicks() &&
+        !this.options.CHEAT_DISABLE_METEOR_GENERATION) {
+        let pos = Vector(this.width + 50, this.height * this.rng.random());
+        let radius = this.rng.random() * 50 + 50;
+        let angle = 180 - this.options.METEOR_GENERATION_CONE_ANGLE / 2
+            + this.rng.random() * this.options.METEOR_GENERATION_CONE_ANGLE;
+        let vel = Vector.fromPolarDeg(radius, angle);
+        this.meteors.push(Meteor.Build(pos, vel, MeteorType.Large));
+    }
+    // ...
+}
+```
+
+So if the current tick is a multiple of the output of
+`getCurrentGenerationDelayInTicks`, we spawn a meteor:
+```js
+// ... world.js
+
+function getCurrentGenerationDelayInTicks() {
+    let delays = this.options.METEOR_GENERATION_DELAY_IN_TICKS;
+    let ratio = this.tickCounter / this.options.TICK_COUNT;
+    let range = delays.start - delays.finish;
+    return Math.round((1 - ratio) * range + delays.finish);
+}
+```
+
+This is based on this setting in options:
+```js
+// ... game.js
+
+METEOR_GENERATION_DELAY_IN_TICKS: {start: 60, finish: 30}
+```
+
+In effect, this generates meteors at a rate of ~`1/60` ticks at the start, and
+at a rate of `~1/30` ticks at the end, with a linear change of the rates as we
+go. It might give unintuitive spawns because we check if the tick is a multiple
+of `Math.round(/*current rate*/)`, but this is the function.
+
+We also get a spawn on tick `0` because this function gets called when
+`this.tickCounter` is still `0`. The first tick of "1" that we receive in the
+bot is because `tickCounter` is incremented as the end of `world.update()`.
+
+**Answer**: linear change from ~1/60 ticks at the start to ~1/30 ticks at the
+end.
 
 #### Q6: What are the parameters of meteor spawns (velocity & position noise)?
-TODO
+We already saw the answer for this in the `world.update()` disassembly:
+```js
+// ... world.js
+
+function update(world) {
+    if (this.tickCounter % this.getCurrentGenerationDelayInTicks() &&
+        !this.options.CHEAT_DISABLE_METEOR_GENERATION) {
+        let pos = Vector(this.width + 50, this.height * this.rng.random());
+        let radius = this.rng.random() * 50 + 50;
+        let angle = 180 - this.options.METEOR_GENERATION_CONE_ANGLE / 2
+            + this.rng.random() * this.options.METEOR_GENERATION_CONE_ANGLE;
+        let vel = Vector.fromPolarDeg(radius, angle);
+        this.meteors.push(Meteor.Build(pos, vel, MeteorType.Large));
+    }
+    // ...
+}
+```
+
+The starting position X is `width + 50`, and the height is randomly picked
+between `0` and `height`.
+
+The velocity is picked with
+[Polar Coordinates](https://en.wikipedia.org/wiki/Polar_coordinate_system), i.e.
+a speed and an angle:
+- The speed is set to `random() * 50 + 50`, but as we saw
+for meteor splits, this will be ignored and set based on `+- 20%` the `Large`
+meteor speed, as part of `Meteor.Build`.
+- The angle is picked randomly based on `METEOR_GENERATION_CONE_ANGLE`.
+
+We saw `METEOR_GENERATION_CONE_ANGLE` defined in `game.js`:
+```js
+// ... game.js
+
+METEOR_GENERATION_CONE_ANGLE: 30
+```
+
+Note here that, similar to splits, spawns happen before meteor updates. This
+means that the first tick that the bot receives has this initial position +
+velocity.
+
+**Answer**: Spawns appear at `(width+50, height*random())` with a velocity angle
+randomly picked with `165 + random() * 30` and speed of `Large` +- 20%.
 
 #### Q7: How are random numbers generated?
 TODO mention initial version using Math.random in meteors
