@@ -1670,28 +1670,58 @@ a bunch about `Math.random` prediction...
 
 Hey! That means we can fully predict games, doesn't it?
 
-HERE WE GO!
+**HERE WE GO!**
 
 ## Rust Nostradamus Bot
 
+Let's move to Rust, because I intend to do a search over possible actions, which
+will benefit from better performance, and I don't want to implement the random
+prediction twice.
+
+I used [`pyo3`](https://github.com/PyO3/pyo3) to have Rust bindings in Python.
+The Rust code that interfaces with Python is in [`lib.rs`](bot/src/lib.rs).
+
 ### Exactly Replicate Server Logic
-TODO reimplemented `seedrandom` in Rust TODO link
 
-TODO recover seed from first observed meteor TODO link
+I reimplemented the RC4 logic of `seedrandom` in
+[`seedrandom.rs`](bot/src/seedrandom.rs), with some unit tests to make sure we can
+generate the exact same floats.
 
-TODO helper methods to generate new spawn or new splits TODO link
+I wrote a helper class `GameRandom` in
+[`game_random.rs`](bot/src/game_random.rs):
+- This primarily exposes two methods: `next_spawn` and `next_splits`. Both of
+  those mimic what the server does, calling `rng.random` in the same order and
+  the same amount of times, to be able to predict the same meteors as the server
+  would; 
+- It can be created with `infer_from_known_seeds`, where we give it the first
+  tick `GameMessage` that the server sent us. From there, we take the first
+  meteor, rewind it by one tick (since the server does spawn + update + send
+  tick info), and try each of the 5 possible seeds to find which one would
+  generate the same spawn.
 
-TODO implement spawn schedule TODO link
+I added a [`spawn_schedule.rs`](bot/src/spawn_schedule.rs) module that has the
+same `is_spawn_tick` logic as the server does.
 
-TODO tick update logic TODO link
+I wrote a simulation function that runs a single tick just like the server
+would, in [`simulate.rs`](bot/src/simulate.rs).
 
-TODO started off predicting all events that will happen, verifying them
+I started by predicting all events that will happen and leveraging the
+"event listener" framework in Python to check that the predicted events matched.
+This helped me fix bugs and gain confidence that the Rust future-predicting
+simulation matches the server's.
 
-TODO simple rust bot that replicates Python logic, but now can exactly verify hits and aim at future splits/spawns
+This allowed me to re-implement our simple Python bot, now in Rust, but where we
+can now exactly verify hits. Additionally, we can start aiming at future
+splits/spawns since we know exactly where they'll be (to aim at it, we can aim
+at the future meteor "rewinded" by the amount of ticks left until it appears,
+only treating it as a valid hit if the collision would happen post-spawn).
 
-TODO great benefit: rust binary to test a game instead of local server delays TODO link
+Going through all this also had a very nice benefit: I could write a Rust binary
+[`main.rs`](bot/src/main.rs) that runs the Rust bot on all 5 possible seeds at
+once and reports the score for each, which is much faster than dealing with
+local servers and Python
 
-TODO score
+This brought me to a score of TODO.
 
 ### Monte Carlo Tree Search
 
