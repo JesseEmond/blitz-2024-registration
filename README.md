@@ -1535,29 +1535,95 @@ switched to use the `rng` instance.
 
 ## Rabbit Hole #2: Nostradamus
 
-TODO: What if... we could predict the randomness? I like CTFs, I've predicted
-insecure random numbers before TODO link, TODO matasano?
+So we answered all the answers we cared about to continue our Simple bot...
 
-TODO: imagine if we can, could fully predict entire game, make full action plan
+But then I had a thought. What if... we could predict the randomness? Again, I
+like CTFs. I've predicted outputs from non-cryptographically secure random
+numbers [before](https://github.com/JesseEmond/random-prediction) and
+[again](https://github.com/JesseEmond/matasano-cryptopals/blob/3f9541dade85bf2d6325f831c9b9ea16805f450b/src/prng.py#L44)
+in [Matasano cryptopals challenges](https://cryptopals.com/sets/3/challenges/23).
+
+Imagine if we could repeat this here. If we can predict the next random numbers
+that will be generated, we could fully predict the entire game -- future spawns,
+future splits, and make a full action plan for the game without ever missing a
+shot. And, because we went through all this work reverse engineering the server
+logic, we know exactly in what order random numbers are generated, so we _can_
+replicate the exact spawning/splitting logic, assuming we can produce the same
+random numbers.
+
+Wouldn't that be great?
 
 ### Math.random
-TODO: initially started looking at predicting Math.random.
 
-TODO: info about Math.random, what PRNG is it?
+I started off by looking at predicting the outputs of `Math.random()`, since
+this is what I saw was being used to decide the velocities of split meteors at
+the time.
 
-TODO: predicting from previous outputs: loto example, with Z3
+The algorithm used by `Math.random` is implementation-defined by the
+[JS standard](https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-math.random),
+but it is notably not cryptographically secure (for cases where unpredictable
+randomness is desired, the `Web Crypto API` would be the preferred API).
 
-TODO: nuanced, though, since NodeJS keeps internal pool of random numbers,
-      generates a chunk, then reads from it from the end. See talk TODO link
+To know what algorithm is used, we'll have to look at how NodeJS implements it,
+or more specifically how V8 implements it. `Math.random()`, implemented
+[here](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/builtins/math.tq#L443), ultimately calls a
+`random_number_generator()->NexBytes(...)`
+[here](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/numbers/math-random.cc#L50),
+which itself is implemented
+[here](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/base/utils/random-number-generator.h#L18).
+So, it's using a
+[`xorshift128+` algorithm](https://en.wikipedia.org/wiki/Xoroshiro128%2B) to
+produce random numbers.
+[This answer](https://security.stackexchange.com/a/110241) covers how other JS
+implementations implement it, with other useful info.
 
-TODO: how is it seeded? For NodeJS, safely assuming it gets an `entropy_source`.
-      It does, from OpenSSL (safe). Fun bug, though, when it was badly seeded:
-      TODO link
+Turns out, it is possible to predict future outputs of this random number
+generator after seeing a few outputs. See
+[this fun example](https://blog.securityevaluators.com/hacking-the-javascript-lottery-80cc437e3b7f),
+predicting the lottery of a LA Times
+[Powerball simulator](https://graphics.latimes.com/powerball-simulator/) to show
+how unlikely you are to win. Well, if you can predict the random numbers... not
+so unlikely. :) The author of the blogpost shows how to predict future outputs
+of `Math.random()` by using the [`z3`](https://github.com/Z3Prover/z3)
+[SMT](https://en.wikipedia.org/wiki/Satisfiability_modulo_theories) solver.
 
-TODO: but... no longer used in meteor after change, only a backoff if not given
-      a seed. Seeding with `Math.random()` might just be `[0-9]` ascii chars,
-      but still 52 bits of mantissa (TODO link, TODO JS uses double-precision
-      floats), not cheap to bruteforce
+When doing this in V8, however, it is a little bit more nuanced. To reduce
+the overhead of going from the `MathRandom` Torque implementation to the native
+random number generation implementation, random numbers are generated in chunks
+of [64](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/numbers/math-random.h#L24)
+numbers, then they are read back-to-front, until the cache needs to be
+re-filled. Working around this is doable, though, and I would highly recommend
+the talk
+[Practical Exploitation of Math.random on V8](https://www.youtube.com/watch?v=_Iv6fBrcbAM&list=FL3xmQgwBqlHgVCsfksthvww&index=1)
+that goes through the details.
+
+So we can likely predict random numbers after seeing a few, but can we
+bruteforce the seed after seeing just one, even? How is NodeJS seeding its
+random number generator? We find that V8
+[assumes](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/base/utils/random-number-generator.h#L32-L35)
+that it was provided a reasonable "entropy source" from its embedder (here,
+NodeJS), otherwise it backs off to possibly weak entropy by default. And NodeJS
+does, in fact, use strong entropy coming from OpenSSL
+[here](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/src/node.cc#L1144).
+So we won't be able to bruteforce that effectively, then. Interestingly, though,
+there was a fun bug in 2013 where NodeJS was setting the entropy pool too late
+after V8 initialized, and V8 was then seeding very poorly using just time:
+[bug](https://bugs.chromium.org/p/v8/issues/detail?id=2905), ouch!
+
+Ultimately, the challenge binary eventually changed (as mentioned in the
+randomness reversing section) to fully rely on `seedrandom`, removing our hopes
+of predicting V8 `Math.random` outputs from meteor observations.
+
+Our only hope to salvage `Math.random` prediction here would have been if
+`seedrandom` is getting seeded through the default path
+(`Math.random().toString()`). This is maybe a smaller entropy source than
+intended for the seed, since it's generating a number between `0` and `1`, which
+for JS floats (double-precision 64-bit numbers,
+[IEEE 754](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_encoding)),
+limits the amount of random bits a bit -- it amounts to 51 bits of randomness
+(sign bit always positive, exponent always equivalent to `^(-1)`, mantissa 51
+bits from `1.[...]`). Still, this is too much to bruteforce in our bot
+timeframe.
 
 ### `seedrandom`
 TODO: seedrandom RC4
