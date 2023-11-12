@@ -1487,7 +1487,7 @@ velocity.
 
 <details>
 
-<summary> <b>Answer</b>: TODO </summary>
+<summary> <b>Answer</b>: Uses <i>seedrandom</i> to generate repeatable games, but older version used <i>Math.random()</i> for meteor velocity randomness. The seed can be set via a command line argument, otherwise defaults to <i>Math.random().toString()</i> </summary>
 
 For meteor spawns, the position Y randomness is based on `this.rng.random()`.
 This `rng` is an instance that comes from the `random.js` file:
