@@ -1069,13 +1069,13 @@ useful to spot a change that was made, which we'll see later):
 
 Let's sharpen our V8 disassembling skills by answering gradually more involved
 questions about the challenge:
-- 1. Are collisions detected within-tick or in discrete increments?
-- 2. Where is the meteor splitting logic?
-- 3. On meteor split, what is the source position?
-- 4. On meteor split, how is the velocity computed (angle & speed noise)?
-- 5. At what rate do we expect meteor spawns?
-- 6. What are the parameters of meteor spawns (velocity & position noise)?
-- 7. How are random numbers generated?
+1. Are collisions detected within-tick or in discrete increments?
+2. Where is the meteor splitting logic?
+3. On meteor split, what is the source position?
+4. On meteor split, how is the velocity computed (angle & speed noise)?
+5. At what rate do we expect meteor spawns?
+6. What are the parameters of meteor spawns (velocity & position noise)?
+7. How are random numbers generated?
 
 Don't worry, I'll spare you the disassembly from now on and just give my
 inferred JS-like code.
