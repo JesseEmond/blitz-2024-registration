@@ -1176,25 +1176,25 @@ function update(world) {
         this.meteors.push(Meteor.Build(pos, vel, MeteorType.Large));
     }
     this.options.CHEAT_GENERATE_PREDICTABLE_METEORS
-        .filter(isPredictedMeteorTick).forEach(buildPredictableMeteor);
+        .filter(this.isPredictedMeteorTick).forEach(this.buildPredictableMeteor);
     this.findAndHandleCollisions();
-    this.meteors.forEach(meteorUpdate);
-    this.meteors = this.meteors.filter(meteorInBoundsY);
-    this.meteors.filter(hitPlanet).forEach(hurtHealth);
-    this.meteors = this.meteors.filter(meteorInBoundsX)
-        .filter(meteorIsNotDestroyed);
-    this.rockets.forEach(rocketUpdate);
-    this.rockets = this.rockets.filter(rocketInBoundsX)
-        .filter(rocketIsNotDestroyed);
+    this.meteors.forEach(this.meteorUpdate);
+    this.meteors = this.meteors.filter(this.meteorInBoundsY);
+    this.meteors.filter(this.hitPlanet).forEach(this.hurtHealth);
+    this.meteors = this.meteors.filter(this.meteorInBoundsX)
+        .filter(this.meteorIsNotDestroyed);
+    this.rockets.forEach(this.rocketUpdate);
+    this.rockets = this.rockets.filter(this.rocketInBoundsX)
+        .filter(this.rocketIsNotDestroyed);
     this.tickCounter += 1;
     this.cannon.update();
 }
 
 function findAndHandleCollisions() {
     this.collisions = [];
-    this.rockets.flatMap(this, allRocketCollisions)
-        .sort(collisionSmallestTime)
-        .forEach(doHandleCollision);
+    this.rockets.flatMap(this, this.allRocketCollisions)
+        .sort(this.collisionSmallestTime)
+        .forEach(this.handleCollision);
 }
 
 function allRocketCollisions(rocket) {
@@ -1228,19 +1228,89 @@ function checkCollisionDuringCurrentTick(p1, p2) {
     let intersection = geoUtils.movingCirclesIntersection(
         p1.position, p1.velocity, p1.size,
         p2.position, p2.velocity, p2.size);
-    return intersection.filter(timeBetween0and1).sort(smallestTime).at(0) ?? null;
+    return intersection.filter(this.timeBetween0and1).sort(this.smallestTime).at(0) ?? null;
 }
 ```
 
 That settles it, then.
 
-**Answer: collisions are detected within-tick.**
+**Answer**: collisions are detected within-tick.
 
 #### Q2: Where is the meteor splitting logic?
-TODO
+
+In `world.js` `findAndHandleCollisions()`, the call to the function
+`handleCollision` seems like a promising place to check:
+
+```js
+// ... world.js
+
+function handleCollision(collision) {
+    if (collision.meteor.isDestroyed || collision.rocket.isDestroyed) {
+        return;
+    }
+    this.collisions.push(collision);
+    collision.meteor.destroy();
+    collision.rocket.destroy();
+    this.handleMeteorSplit();
+    this._score += this.options.SCORE_MULTIPLIER * collision.meteor.score;
+}
+```
+
+So `handleMeteorSplit`, then!
+
+```js
+function handleMeteorSplit(collision) {
+    collision.meteor.getMeteorsAfterExplosion(collision.intersection)
+        .forEach(addMeteor);
+}
+```
+
+**Answer**: `handleMeteorSplit`.
 
 #### Q3: On meteor split, what is the source position?
-TODO
+
+Let's see what `getMeteorsAfterExplosion` does, in `meteor.js`:
+```js
+// ... meteor.js
+
+function getMeteorsAfterExplosion(intersection) {
+    return this.meteorInfos.explodesInto.map(function(explode) {
+        return Meteor.Build(
+            intersection,
+            this.velocity.rotate(explode.rotateionRad).multiply(0.8),
+            explode.meteorType)
+    });
+}
+```
+
+So it appears to be set to `intersection`. This comes from
+`collision.intersection`. This intersection was created by calling
+`geoUtils.movingCirclesIntersection`.
+
+Let's reverse `geoUtils.js`:
+
+```js
+// ... geoUtils.js
+
+function movingCirclesIntersection(a_pos, a_vel, a_size, b_pos, b_vel, b_size) {
+    // ... here there's a bunch of math that essentially does exactly what our
+    // earlier Python method 'collision_times' did! It sets a, b, c variables
+    // to solve with the quadratic formula and get two time 'ts' (t1, t2):
+    ts = [t1, t2];
+    ts.map(function(t) {
+        // Move the circles to the moment of collision
+        let a_after = a_pos.add(a_vel.multiply(t));
+        let b_after = b_pos.add(b_vel.multiply(t));
+        // Move 'a_size' from a in the direction towards b -- this is the point
+        // where the circles intersect.
+        let intersection = b_after.subtract(a_after).normalized
+            .multiply(a_size).add(a_after);
+        return { t: t, intersection: intersection };
+    });
+}
+```
+
+**Answer**: Split meteors spawn on the position of the collision intersection.
 
 #### Q4: On meteor split, how is the velocity computed (angle & speed noise)?
 TODO
