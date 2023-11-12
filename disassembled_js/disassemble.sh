@@ -6,7 +6,7 @@
 #   patches applied to:
 #   1) match the right https://github.com/vercel/pkg-fetch nodejs patch to what
 #      was packaged in blitz-challenge-linux
-#   2) local patch to add auto-disassembly & printiong of loaded Script cached
+#   2) local patch to add auto-disassembly & printing of loaded Script cached
 #      data, when available
 
 # Run a packaged vercel binary in interpreter mode, instead of running the
