@@ -1844,13 +1844,22 @@ So I ran it on the server and... **5000 points**!
 Here is the final game:
 TODO: include video 5000pts
 
-TODO: note about dodging
-TODO: note about weirdness
+It's cool to see the bot dodge hitting the large meteors towards the end,
+focusing instead on the higher-points smaller meteors it has time to hit before
+the game ends.
+
+One tricky part when looking at such games is also that it's hard to tell when a
+move that looks weird/suboptimal is due to a lack of searching, or because it
+indirectly leads to a more favorable random number sequence.
 
 ### Post-Blitz Follow-ups
-TODO: tried a few last things, offline:
-TODO: Fast resolve, can get >2x throughput in MCTS rounds per tick
-TODO: multithreading
+I tried a few additional things after the end of the event, out of curiosity to
+see if they could have brought the score higher.
 
-TODO: nothing higher than 5000pts
-TODO conclusion
+I implemented an optimized version of "resolving" a simulation, where we can
+skip ahead to the next tick where something will happen (a hit or a spawn),
+instead of updating one tick at a time. This gave a throughput more than twice
+as fast of simulations/second! I also added multithreading to run multiple MCTS
+searches in parallel.
+
+In all cases, I did not see a score higher than 5000 points online! Phew!
