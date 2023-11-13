@@ -3,7 +3,7 @@
 TODOs:
 - [ ] Refactor `game_search_state` out of `planner`
 - [ ] Go through code remaining TODOs
-- [ ] sections below
+- [ ] TODOs in the readme
 
 It is a little bit of a tradition now to put _just a smidge_ of overkill for the
 [Coveo Blitz](https://2024.blitz.codes/) registration challenge:
@@ -243,9 +243,7 @@ of that:
 
 ### Simple Bot Results
 
-Through some iteration, we eventually get a score of TODO pts:
-
-TODO(emond): Game video, update score above
+Through some iteration, I eventually got a score of 4240 points.
 
 For the simple bot's code, see the branch
 [`py_bot`](https://github.com/JesseEmond/blitz-2024-registration/tree/py_bot),
@@ -1721,7 +1719,7 @@ Going through all this also had a very nice benefit: I could write a Rust binary
 once and reports the score for each, which is much faster than dealing with
 local servers and Python
 
-This brought me to a score of TODO.
+This brought me to a score of 4815 points.
 
 ### Monte Carlo Tree Search
 
@@ -1769,8 +1767,6 @@ a lot of exploration of the actions space with just randomness.
 I plugged this search into [`planner.rs`](bot/src/planner.rs), which just runs
 a search on the first tick (within 1s) and returns the best seen path. The
 Python bot will then just follow this plan for the rest of the game.
-
-I was able to get a score of TODO points with this strategy.
 
 ### MCTS tweaks
 
