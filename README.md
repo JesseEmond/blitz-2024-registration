@@ -115,7 +115,7 @@ and solve for `t`, where we know the source position (cannon position), the
 target's starting position (meteor's current position), and the collision
 position being `meteor_pos + t * meteor_velocity`, for an unknown `t`. Visually:
 
-TODO(emond): include diagram
+![Diagram with the concepts visualized](readme_media/DiagramAimAhead.png)
 
 From there we can derive the `a`, `b`, `c` to plug in our
 [quadratic formula](https://en.wikipedia.org/wiki/Quadratic_formula):
