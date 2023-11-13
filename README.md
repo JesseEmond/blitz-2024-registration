@@ -88,7 +88,7 @@ aren't told -- we'll have to make guesses and check if they're right.
 
 A game might look like this (for example, this is a 3655 points game):
 
-https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/5ba8d05b-7336-48f6-bd07-4ef113bc903c
+https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/b67794a8-beec-40ab-b467-6ea07cd5ef5d
 
 ## Simple Bot
 
@@ -1902,7 +1902,7 @@ So I ran it on the server and... **5000 points**!
 ## Winning Game
 Here is the final game:
 
-https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/d37d5355-6d22-460b-ac3c-6cbe9d954ee9
+https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/988598c1-6f3e-4fdf-86a8-2ddd367c145b
 
 It's cool to see the bot avoid hitting the large meteors towards the end,
 focusing instead on the higher-points smaller meteors it has time to hit before
