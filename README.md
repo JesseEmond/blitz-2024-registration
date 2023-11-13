@@ -1,8 +1,5 @@
 # Blitz 2024 Registration - /dev/null
 
-TODOs:
-- [ ] TODOs in the readme
-
 It is a little bit of a tradition now to put _just a smidge_ of overkill for the
 [Coveo Blitz](https://2024.blitz.codes/) registration challenge:
 - In 2023, we were solving the Traveling Salesperson Problem with
@@ -117,6 +114,10 @@ position being `meteor_pos + t * meteor_velocity`, for an unknown `t`. Visually:
 
 ![Diagram with the concepts visualized](readme_media/DiagramAimAhead.png)
 
+Above, `Rocket_dir` and the `Collision` point are unknowns. However,
+we can put everything in terms of a single unknown variable collision time `t`
+and solve for it.
+
 From there we can derive the `a`, `b`, `c` to plug in our
 [quadratic formula](https://en.wikipedia.org/wiki/Quadratic_formula):
 
@@ -124,7 +125,50 @@ From there we can derive the `a`, `b`, `c` to plug in our
   <summary>Math derivation</summary>
 
   ```
-  TODO(emond): math derivation
+  We know: Meteor_pos, Meteor_vel, Cannon_pos, RocketSpeed
+  Unknown: Rocket_dir, Collision, t
+  
+  We are looking for the time 't' where:
+    Meteor_pos + t * Meteor_vel = Cannon_pos + t * Rocket_vel
+  In other words, when the two will collide.
+
+  We can rewrite this as:
+    Meteor_pos + t * Meteor_vel - Cannon_pos = t * Rocket_vel
+  Or if we look at distances (to ignore the unknown Rocket_dir):
+    ||Meteor_pos + t * Meteor_vel - Cannon_pos|| = t * RocketSpeed
+
+  To make this easier to work with, let's assign some shorter variable names for
+  each:
+    R_pos: Cannon_pos
+    R_s: RocketSpeed
+    M_pos: Meteor_pos
+    M_vel: Meteor_vel
+    D: Delta_pos, i.e. (Meteor_pos - Cannon_pos)
+
+  So we'd have:
+    ||M_pos + t * M_vel - R_pos|| = t * R_s
+
+  Or, using 'D':
+    ||D + t * M_vel|| = t * R_s
+
+  We can square both sides and express vectors in terms of x and y components:
+    (D_x+ t*M_vel_x)^2 + (D_y + t*M_vel_y)^2 = t^2 * RocketSpeed^2
+
+  We can do some algebra to expand it:
+    (D_x^2 + 2*t*M_vel_x*D_x + t^2 * M_vel_x^2)
+    + (D_y^2 + 2*t*M_vel_y*D_y + t^2 * M_vel_y^2)
+    = t^2 * RocketSpeed^2
+
+  Grouping up terms, moving the right side to the left:
+    t^2 * (M_vel_x^2 + M_vel_y^2 - RocketSpeed^2)
+    + t * (2 * (M_vel_x*D_x + M_vel_y*D_y))
+    + (D_x^2 + D_y^2)
+    = 0
+  
+  And we have a quadratic formula!
+
+  We can rephrase some of those operations in vectoro operations:
+    (M_vel.dot(M_vel) - RocketSpeed^2) * t^2 + (2 * M_vel.dot(D)) * t + D.dot(D) = 0
   ```
 </details>
 
