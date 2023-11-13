@@ -1264,8 +1264,8 @@ function allRocketCollisions(rocket) {
 ```
 
 Some new interesting notes:
-- Rockets aren't checked for Y out-of-bounds! I tested this to be sure after
-  seeing this and ineed -- if I shoot a rocket directly up, for example, the
+- Rockets aren't checked for Y out-of-bounds! I tested it to be sure after
+  seeing this and indeed -- if I shoot a rocket directly up, for example, the
   server keeps sending me its position even when it gets very deep in the
   negatives, never disasppearing;
 - Collisions are checked before the update step;
