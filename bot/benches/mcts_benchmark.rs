@@ -3,7 +3,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use nostradamus::game_message::default_game_settings;
 use nostradamus::game_random::GameRandom;
 use nostradamus::mcts::{MCTS, MCTSOptions};
-use nostradamus::planner::SearcherState;
+use nostradamus::game_search_state::GameSearchState;
 use nostradamus::seedrandom::SeedRandom;
 use nostradamus::simulate::GameState;
 
@@ -12,7 +12,7 @@ fn mcts_stardreamer(rounds: usize) -> u32 {
     let rng = GameRandom::new(SeedRandom::from_seed(b"Stardreamer"));
     let (constants, cannon) = default_game_settings();
     let state = GameState::new(/*first_id=*/0);
-    let searcher_state = SearcherState::new(state, &constants, &cannon, rng);
+    let searcher_state = GameSearchState::new(state, &constants, &cannon, rng);
     let options = MCTSOptions {
         exploration_multiplier: 0.0,
         random_action_prob: 0.0,

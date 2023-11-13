@@ -59,7 +59,6 @@ pub fn get_aim_options(source: &Vec2, rocket_speed: f64, rocket_size: f64,
         Vec2::new(0.0, offset),
         // aim at right size (e.g. hit a meteor before it disappears)
         Vec2::new(offset, 0.0),
-        // TODO: other aiming options useful e.g. bottom left/top left?
     ];
     offset_options.iter()
         .map(|off| aim_ahead(source, rocket_speed, &MovingCircle {

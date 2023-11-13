@@ -1,8 +1,6 @@
 # Blitz 2024 Registration - /dev/null
 
 TODOs:
-- [ ] Refactor `game_search_state` out of `planner`
-- [ ] Go through code remaining TODOs
 - [ ] TODOs in the readme
 
 It is a little bit of a tradition now to put _just a smidge_ of overkill for the
@@ -1839,7 +1837,7 @@ So I ran it on the server and... **5000 points**!
 ## Winning Game
 Here is the final game:
 
-[Game_5000pts.webm](https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/cb64d3a2-257e-4397-8926-da7d6870a836)
+[`Game_5000pts.webm`](https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/cb64d3a2-257e-4397-8926-da7d6870a836)
 
 It's cool to see the bot dodge hitting the large meteors towards the end,
 focusing instead on the higher-points smaller meteors it has time to hit before

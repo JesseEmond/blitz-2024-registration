@@ -77,13 +77,10 @@ where S::Action: Clone {
                 new_beam.push(new_node);
             }
         }
-        // TODO: re-include prints
-        // let best_score = best_node.state.evaluate();
         let best_node = best_node.unwrap();
         self.best_heuristic = best_node.state.heuristic();
         self.best_evaluation = best_node.state.evaluate();
         if best_node.state.is_final() {
-            // TODO: move to verbose
             println!(" Final score: {}", best_node.state.evaluate());
             Some(best_node.actions.clone())
         } else {

@@ -146,8 +146,7 @@ where S::Action: Clone {
         }
     }
 
-    pub fn run_with_budget(&mut self, budget: Duration) {
-        let start = Instant::now();
+    pub fn run_with_budget(&mut self, start: &Instant, budget: Duration) {
         while start.elapsed() < budget {
             self.run_round(&mut rand::thread_rng());
         }
@@ -177,7 +176,6 @@ where S::Action: Clone {
         if self.best_path.is_empty() {
             return None;
         }
-        // TODO: pick based on # visits?
         let child_idx = self.best_path.remove(0);
         // The other children nodes can now be re-used.
         for other in self.nodes[self.root_idx].data().children.iter().enumerate()
@@ -272,7 +270,6 @@ where S::Action: Clone {
         if score >= self.best_seen_score {
             *path = current_path.clone();  // backprop through this entire strong path
         }
-        // TODO verbose setting
         if score > self.best_seen_score {
             println!("Score: {} ({} rounds)", score, self.rounds);
             self.best_seen_score = score;
@@ -332,6 +329,3 @@ where S::Action: Clone {
         (idx, &mut self.nodes[idx])
     }
 }
-
-// TODO: Add a meta search? reset MCTS and run multiple times
-// https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf

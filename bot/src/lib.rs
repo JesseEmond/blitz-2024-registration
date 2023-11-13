@@ -6,6 +6,7 @@ extern crate serde_json;
 
 pub mod game_message;
 pub mod game_random;
+pub mod game_search_state;
 pub mod mcts;
 pub mod physics;
 pub mod planner;
@@ -23,7 +24,6 @@ use crate::game_random::GameRandom;
 use crate::planner::{Event, Planner};
 use crate::simulate::{EventInfo};
 
-// TODO: consider reworking to make it sendable?
 #[pyclass(unsendable)]
 pub struct Nostradamus {
     planner: Planner<'static>,

@@ -31,7 +31,6 @@ impl RandomPool {
 
     fn random(&mut self, index: usize) -> f64 {
         while index >= self.pool.len() {
-            // TODO: Generate a chunk instead of just 1?
             self.pool.push(self.rng.random());
         }
         self.pool[index]

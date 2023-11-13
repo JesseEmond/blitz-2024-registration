@@ -407,10 +407,8 @@ pub fn resolve_simulation(state: &GameState, mut rng: GameRandom,
     }
     let mut next_id = state.next_id;
     let max_rocket_exit_tick = rockets.iter().map(|r| r.exit_tick).max().unwrap();
-    let mut last_spawn_tick = tick - 1;
+    let mut last_spawn_tick = if tick > 0 { tick - 1 } else { tick };
     while !rockets.is_empty() && tick < MAX_TICKS {
-        // TODO: don't do updates at all, just do collision checks with rewinds?
-        //       + cache rocket->meteor collisions
         let mut earliest_hit: Option<Collision> = None;
         // Find the earliest rocket->meteor hit in existing meteors
         for (rocket_idx, rocket) in rockets.iter().enumerate() {
