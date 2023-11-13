@@ -1855,6 +1855,8 @@ I implemented an optimized version of "resolving" a simulation, where we can
 skip ahead to the next tick where something will happen (a hit or a spawn),
 instead of updating one tick at a time. This gave a throughput more than twice
 as fast of simulations/second! I also added multithreading to run multiple MCTS
-searches in parallel.
+searches in parallel. There were other ideas in this
+[MCTS Survey paper](http://www.incompleteideas.net/609%20dropbox/other%20readings%20and%20resources/MCTS-survey.pdf)
+that seemed good to try, but I stopped there.
 
-In all cases, I did not see a score higher than 5000 points online! Phew!
+In any case, I did not see a score higher than 5000 points after the fact! Phew!
