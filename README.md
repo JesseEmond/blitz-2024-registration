@@ -22,7 +22,7 @@ faster meteors when hit. The difficulty in writing this bot lies in:
 - Aiming rockets at moving meteors;
 - Choosing what meteor to aim for before they go off screen, to maximize points;
 - Unpredictability of meteor spawns and splits -- we don't know exactly where
-  meteor splits will go until the parent meteor hit happens and we see the
+  meteor splits will go until the original meteor hit happens and we see the
   velocities of splits.
 
 I started off with a Python bot that aims ahead at moving meteors, prioritizing
@@ -51,6 +51,10 @@ The game we're playing looks something like this:
 The game is tick-based, lasts 1000 ticks, and we have maximum **1s** to give our
 actions for each game tick.
 
+The following mixes information from the rules, as well as information gathered
+from the constants we are given on the first tick. The constants remained the
+same throughout the event, so we can treat them as challenge constants here.
+
 Our cannon, on the left, is positioned at
 `(140, 400)`, and can shoot a rocket every 10 ticks. On each tick, we can send
 an action to look at a point (or change orientation) and an action to shoot
@@ -58,7 +62,7 @@ an action to look at a point (or change orientation) and an action to shoot
 
 Meteors spawn at random heights on the very right, heading left with a random
 orientation. Hitting a meteor can lead to it splitting into smaller meteors,
-each with a random speed and an orientation relative to their parent meteor's
+each with a random speed and an orientation relative to their origin meteor's
 orientation.
 
 The types of meteors are:
