@@ -51,7 +51,7 @@ README.
 
 The game we're playing looks something like this:
 
-TODO(emond): include image here
+![Screenshot of the game in action](readme_media/Blitz2024GameExample.png)
 
 The game is tick-based, lasts 1000 ticks, and we have maximum **1s** to give our
 actions for each game tick.
