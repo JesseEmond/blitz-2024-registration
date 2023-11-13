@@ -53,8 +53,8 @@ actions for each game tick.
 
 Our cannon, on the left, is positioned at
 `(140, 400)`, and can shoot a rocket every 10 ticks. On each tick, we can send
-an action to look at a point (or change orientation) and an action to shoot,
-if our cannon has cooled down.
+an action to look at a point (or change orientation) and an action to shoot
+(if our cannon has cooled down).
 
 Meteors spawn at random heights on the very right, heading left with a random
 orientation. Hitting a meteor can lead to it splitting into smaller meteors,
@@ -76,9 +76,9 @@ The types of meteors are:
 Some interesting notes:
 - _Small_ meteors are the hardest to hit (they're  small and fast) and are worth
   the most when hit (i.e. if we have to choose between two meteors about to exit
-  the screen, we should prioritize the _Small_ one), but _Large_ have the
-  highest score potential (i.e. if we have time, we should hit as many of the
-  _Large_ descendents as we can);
+  the screen, we should prioritize the _Small_ one), but _Large_ meteors have
+  the highest score potential (i.e. if we have time, we should hit as many of
+  the _Large_ descendents as we can);
 - Split speeds have randomness in them, which means that we might miss a meteor
   if we guess it wrong when shooting early.
 
@@ -93,9 +93,9 @@ https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/5ba8d05b-73
 ## Simple Bot
 
 To start things off, I wrote some Python code to:
-1. aim ahead of a meteor to hit it, picking & tracking existing targets;
-2. simulate server tick logic to verify that our intended hits will happen;
-3. infer what the server did between ticks to verify our predictions.
+1. Aim ahead of a meteor to hit it, picking & tracking existing targets;
+2. Simulate server tick logic to verify that our intended hits will happen;
+3. Infer what the server did between ticks to verify our predictions.
 
 ### Aim & Shoot
 
@@ -103,14 +103,16 @@ Shooting at a moving circle (meteor) with a known rocket speed (20) is a very
 simplified version of ballistics (no acceleration, no gravity force, ...), which
 thankfully is well documented for example in the context of
 [game development](https://gamedev.stackexchange.com/q/25277). This link
-provides the necessary formula, but it'd be interesting to derive it ourselves.
+provides the necessary formula, but the following is the intuition.
 
-We can view the problem as having an expanding circle (at the speed of
-`rocket_speed`) from our source position, which intersects with the meteor's
-position at time `t`. We can visualize this as a triangle with an unknown angle
-and solve for `t`, where we know the source position (cannon position), the
-target's starting position (meteor's current position), and the collision
-position being `meteor_pos + t * meteor_velocity`, for an unknown `t`. Visually:
+We can view the problem as having a gradually expanding circle (at the speed of
+`rocket_speed`) from our cannon's position, which intersects with the meteor's
+position at some unknown time `t`. We can visualize this as a triangle with an
+unknown angle and solve for `t`, where we know the source position (cannon
+position), the target's starting position (meteor's current position), and the
+collision position being `meteor_pos + t * meteor_velocity`, for an unknown `t`.
+
+Visually:
 
 ![Diagram with the concepts visualized](readme_media/DiagramAimAhead.png)
 
@@ -242,11 +244,11 @@ targets.
 
 We can aim at a single meteor and hit it, but as we start aiming at more meteors
 our shots might start interacting with each other with their splits, so we also
-want to, to some degree, simulate the logic the server is using to update
+want to simulate (to some degree) the logic the server is using to update
 rockets & meteors and check for hits.
 
 We want to do this in primarily 2 cases:
-1. When picking a target, to make sure we'd actually hit it;
+1. When picking a target, to make sure that we'd actually hit it;
 2. On every tick, to see if we should update our active targets to match
    reality (e.g. due to an unexpected spawn or split interaction).
 
@@ -270,13 +272,15 @@ but a hit happened.
 
 So I would run games with the local server, adding asserts on my expectations to
 detect mismatches between my simulation and the real server logic, and iterate
-when they were wrong, for example if the inferred scores mismatch.
+when they were wrong, for example if the inferred scores vs. the real score
+mismatched.
 
-For that purpose, I made a useful "event listener" framework to invoke listener
+For that purpose, I made a handy "event listener" framework to invoke listener
 callbacks when an event happens. Here are example useful listeners that came out
 of that:
 - `Stats`: print events and track meaningful ones (missed meteors,
-  wasted rockets, target reshuffles, etc.);
+  wasted rockets, target reshuffles, etc.), produce an overview of the
+  bot's performance at the end of the game;
 - `TargetTracker`: verify that intended hits happened and reassign targets every
   tick based on simulation;
 - `Asserter`: utility class that tracks the tick info and, when an assertion
@@ -285,7 +289,7 @@ of that:
 
 ### Simple Bot Results
 
-Through some iteration, I eventually got a score of 4240 points.
+Through iteration, I got to a score of 4240 points with this bot.
 
 For the simple bot's code, see the branch
 [`py_bot`](https://github.com/JesseEmond/blitz-2024-registration/tree/py_bot),
@@ -302,12 +306,12 @@ games that I then verify with the local challenge binary.
 
 But, what if we didn't have to guess? The game's logic is _right there_, in a
 file called `./blitz-challenge-linux`. I like security challenges (Capture The
-Flag challenges -- or CTF). Though it's not an area that I know a lot about, I
-do have _some_ experience in Reverse Engineering (a lot of it through
-[RingZer0](https://ringzer0ctf.com/profile/2574/dysleixa)), where we try to
-understand what a binary is doing from the binary alone (e.g. by disassembling
-it and looking at assembly code). What if I use the local binary to answer my
-questions?
+Flag challenges -- or CTF). Though it's not a CTF category where I have a ton of
+practice, I do have _some_ experience in Reverse Engineering (a lot of it
+through [RingZer0](https://ringzer0ctf.com/profile/2574/dysleixa)), where we try
+to understand what a binary is doing from the binary alone (e.g. by
+disassembling it and looking at assembly code). What if I use the local binary
+to answer my questions?
 
 This is maybe not the most strategic use of my blitz time, but hey; it's a shiny
 new thing I can look at to
@@ -338,23 +342,22 @@ back the original JS files,
 but they make a mention that `pkg` will only package the original JS files as-is
 if the node package is public and does not have certain licenses.
 
-Unfortunately for us, the unpacked `package.json` shows:
+Unfortunately for us, the unpacked `package.json` of the blitz binary shows:
 ```
 {
     "name": "@blitz/challenge",
     "private": true,
-	...
+    ...
 }
 ```
 
 So no dice for the nice JS files. All we get are files in some binary format we
 don't know.
 
-We're not the only ones that get stuck at that point, see this unanswered
-upvoted stackexchange answer:
-[stachexchange post](https://reverseengineering.stackexchange.com/questions/30921/decompiling-an-executable-compiled-by-vercel-pkg).
+We're not the only ones that get stuck at that point, see
+[this unanswered & upvoted stackexchange answer](https://reverseengineering.stackexchange.com/questions/30921/decompiling-an-executable-compiled-by-vercel-pkg).
 
-This seems to be somewhat deliberate; `vercel-pkg` highlights the following
+This seems to be somewhat deliberate; `vercel/pkg` highlights the following
 benefits to the tool in the dev documentation (emphasis mine):
 > [...] it doesn't store your source JavaScript directly. runs your JavaScript
 > through the V8 compiler and produces a V8 snapshot, which has two nice
@@ -363,12 +366,12 @@ benefits to the tool in the dev documentation (emphasis mine):
 >    JavaScript source and so forth is already done
 > 2. **Code is protected as it doesn’t live in the clear in the binary**
 
-To be fair, on the main GitHub page there is this note (emphasis mine):
+To be fair, on the main GitHub page there is this note (emphasis mine again):
 > While compiling to bytecode **does not make your source code 100% secure**, it
 > does add a small layer of security/privacy/obscurity to your source code.
 
 This is a good reminder of the limits of
-["security through obscurity"](https://en.wikipedia.org/wiki/Security_through_obscurity).
+[security through obscurity](https://en.wikipedia.org/wiki/Security_through_obscurity).
 If there's anything I've learned through CTFs, it's what patience and
 perseverance can do to "not 100% secure". :)
 
@@ -379,17 +382,16 @@ At a high level, `vercel/pkg` works like this:
   NodeJS uses internally to represent parsed JavaScript (prior to generating
   actual machine assembly);
 - Builds a NodeJS interpreter with patched changes, including having the cached
-  data of all the scripts appended as data inside it;
+  data of all the scripts embedded as data inside it;
 - Instruments the NodeJS binary with a
   [bootstrap JS file](https://github.com/vercel/pkg/blob/main/prelude/bootstrap.js)
   that:
   - Knows how to read its own interpreter's binary file to extract the packaged
     payload data (cached scripts);
-  - Replaces JS filesystem operations to go through a virtual filesystem
-    abstraction that pretends that files starting with "/snapshot" are reading
-    the original scripts, when in reality it is extracting them from its own
-    payload data, see
-    [this code](https://github.com/vercel/pkg/blob/bb042694e4289a1cbc530d2938babe35ccc84a93/prelude/bootstrap.js#L599).
+  - [Replaces JS filesystem operations](https://github.com/vercel/pkg/blob/bb042694e4289a1cbc530d2938babe35ccc84a93/prelude/bootstrap.js#L599)
+    to go through a virtual filesystem abstraction that pretends that files
+    starting with "/snapshot" are reading the original scripts, when in reality
+    it is extracting them from its own payload data.
 
 This is an interesting approach overall, and now I appreciate a little bit more
 that someone already did the work of unpackaging the files by parsing this
@@ -412,26 +414,28 @@ open-source reverse engineering software developed by the NSA. Such software is
 invaluable to analyze and explore binaries. One great feature is that it can
 generate C-like equivalent to the disassembled binary, with the option to rename
 variables & functions as you progressively understand the binary's logic more
-and more. This feature is one of the reasons why the authors of the plugin
-decided to leverage Ghidra instead of writing a standalone tool. Another big
-advantage of Ghidra is that it is free, which is a lot more approachable than an
-[Ida license](https://www.hex-rays.com/cgi-bin/quote.cgi/products) for a hobby!
+and more. This C-like generation feature is one of the reasons the authors of
+the plugin quote about why they decided to leverage Ghidra instead of writing a
+standalone tool. Another big advantage of Ghidra is that it is free, which is a
+lot more approachable than an
+[Ida license](https://www.hex-rays.com/cgi-bin/quote.cgi/products) for a
+hobbyist like me!
 
 So we just have to use that plugin and we're golden, ... right?
 
 ##### Okay, some assembly required
 Alright, so the
 [repository](https://github.com/PositiveTechnologies/ghidra_nodejs) for the
-plugin is archived and read-only now and the only release version is for an
+plugin is archived and read-only now and the only released version is for an
 older version of Ghidra. I couldn't find a more recent one.
 
 There are instructions to build it ourselves though, let's do that. We need to
-install Eclipse, a bunch of dependencies, learn more about Ghidra plugins and
-how they require running a Maven build to run a command that creates an Eclipse
-project type for plugin development that we can later use to open the existing
-GitHub plugin code and build plugins -- oh but now the Ghidra plugin API changed
-in the newer version and we need to fix the repository to make it build with
-Ghidra 10.4.
+install Eclipse, a bunch of dependencies, learn more about Ghidra plugins
+development and how they require running a Maven build to run a command that
+creates an Eclipse project type for plugin development that we can later use to
+open the existing GitHub plugin code and build plugins -- oh but now the Ghidra
+plugin API changed in the newer version and we need to fix the plugin's Java
+code to make it build with the Ghidra 10.4 plugin API.
 
 I'll be honest, I already (purposefully?) dropped from my memory the
 step-by-step details it took to get it working, but I remember how annoying it
@@ -450,7 +454,7 @@ Maybe the plugin doesn't support our NodeJS' V8 version. It lists
 what's ours?
 
 `vercel/pkg` actually has a nice hidden feature for us where the packaged binary
-it creates can be invoked to bypass the packaged application and open an
+it creates can be invoked to bypass the packaged application and open the node
 interpreter instead. This feature is alluded to
 [in its bootstrap code](https://github.com/vercel/pkg/blob/bb042694e4289a1cbc530d2938babe35ccc84a93/prelude/bootstrap.js#L65), and we can run commands to figure out the versions in-use:
 - `PKG_EXECPATH=PKG_INVOKE_NODEJS ./blitz-challenge-linux -v` tells us we are
@@ -464,14 +468,15 @@ can we just add ours?
 
 I wanted to make sure I'm looking at the right version and that the plugin
 _could_ be compatible with the `pkg` outputs we have (since the blog post was
-more aimed at reversing `bytenode` file outputs), so I checked how the plugin
-checks for version match. It is done based on a
+more aimed at reversing `bytenode` file outputs, I thought it might not be the
+same format as `vercel/pkg`), so I checked how the plugin checks for version
+match. It is done based on a
 [hash of the version components](https://github.com/PositiveTechnologies/ghidra_nodejs/blob/7e2d5a9fad637f8e54809d40434879a5beb3fbba/src/main/java/v8_bytecode/V8_VersionDetector.java#L32-L44),
-compared with a stored value in the `cachedData` output.
+compared with a stored value in the `cachedData` output header.
 
-I wrote a script to compute the hash:
+I wrote a script to compute the hash the same way:
 [`v8_script_cache_version_hashes.py`](disassembled_js/v8_script_cache_version_hashes.py),
-and running it on V8 version string `10.2.154.4` gave a 64-bit hash of
+and running it on the V8 version string `10.2.154.4` gave a 64-bit hash of
 `af632352`, which indeed matched the stored version hash in our files:
 ```
 xxd ./blitz-challenge-unpacked/snapshot/blitz-2024/challenge/dist/action.js | head
@@ -481,7 +486,7 @@ Outputs:
 [...]
 
 I.e. the 2nd 32-bit integer is 522363af, which is 0xaf632352 stored in
-little-endian! We'll see next what the 1st 32-bit integer represents.
+little-endian! We'll see next what the 1st 32-bit integer represents in a sec.
 ```
 
 So I added `"10.2.154.4"` to the list of versions and rebuilt the plugin.
@@ -497,7 +502,7 @@ was auto-detected!
 _But_, still no useful disassembly...
 
 ##### Maybe we're holding it wrong?
-Maybe "crowbarring" our version in is not enough (who would have thought??).
+Maybe "crowbarring" our version in is not enough (who would have thought??)
 Looks like we'll have to learn a little bit more about how the plugin works,
 starting with parsing the input data.
 
@@ -506,7 +511,7 @@ parse `cachedData`,
 [starting here after the header](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/snapshot/object-deserializer.cc#L43).
 Interestingly, the serialized format is a bytecode on its own -- a serialization
 bytecode! I wrote a Python script to parse it at a very high level, just enough
-to get the overall structure:
+to get the overall structure of the `action.js` file I was trying it on:
 [`parse_v8_script_cache.py`](disassembled_js/parse_v8_script_cache.py).
 
 Then, I compared the data I was parsing following
@@ -542,7 +547,7 @@ decompilation for free, but we did learn a lot about V8 internals in the process
 and might get disassembly out of it (i.e. view the V8 bytecode in human-readable
 assembly, instead of a serialized binary file).
 
-In fact, NodeJS supports disassembling V8 code generated from JS for us, e.g.
+In fact, NodeJS supports printing V8 assembly generated from JS for us, e.g. 
 `node --print-bytecode -e 'function myfunc(x) { return x - 2 } myfunc(5)'`.
 This will show you a bunch of assembly for functions we might not care about, so
 let's use the filter flag:
@@ -566,10 +571,10 @@ Source Position Table (size = 8)
 
 That's something!
 
-If you're couple-weeks-ago-me, you might worry that you just wasted all this
-time, because what if you just write a script that loads a `Script` from cached
-data and outputs it, would that show you the disassembly right away, e.g. if you
-had a JS file like:
+If you're couple-weeks-ago-me, you might worry at that point that you just
+wasted all this time, because what if you just write a script that loads a
+`Script` from cached data and outputs it, would that show the disassembly right
+away, e.g. if you had a JS file like:
 ```js
 function my_loading_function() {
   const fs = require('fs');
@@ -587,32 +592,32 @@ Couple-weeks-ago-me might be both disappointed and relieved (with all that time
 spent on the Ghidra plugin) to find out that this doesn't work and only shows
 the V8 bytecode that reads the cached data from disk and the `Script` calls, but
 not the bytecode that gets loaded. However, maybe we can change NodeJS to
-instead disassemble what we care about...
+use that same disassembly functionality to disassemble what we care about...
 
 Here it's worth revisiting how `vercel/pkg` packages a NodeJS interpreter in its
 output. It does so with the help of
 [`vercel/pkg-fetch`](https://github.com/vercel/pkg-fetch), which will apply a
 C++ version-specific patch to the NodeJS source code before building it. For our
 version `v18.5.0`, it applies
-[this patch](https://github.com/vercel/pkg-fetch/blob/6ffa969bc037f33cd5c926b8706324740c8818af/patches/node.v18.5.0.cpp.patch).
-It makes some changes to the main args parsing (in part to force the first
-argument to be the bootstrapping JS code it needs to setup the virtual
+[this patch](https://github.com/vercel/pkg-fetch/blob/6ffa969bc037f33cd5c926b8706324740c8818af/patches/node.v18.5.0.cpp.patch)
+to NodeJS. It makes some changes to the `main` args parsing (in part to force
+the first argument to be the bootstrapping JS code to setup the virtual
 filesystem, and also to support `PKG_INVOKE_NODEJS`), as well as changes to
-allow `Script` load-from-cache to allow loading cached data without a matching
-JS source.
+allow the `Script` load-from-cache function to allow loading cached data without
+a matching JS source.
 
-We can start from this, too!
+We can start from this for our hacky disassembler, too!
 ```sh
 # clone the NodeJS source code for our version
 git clone https://github.com/nodejs/node.git
 cd node
-git checkout v18.5.0
+git checkout v18.5.0  # Checkout the version we're on
 
 # check that we can build NodeJS
 ./configure --ninja  # using 'Ninja' for faster builds
 make -j4
 
-# apply the patch from pkg
+# apply the same patch as vercel/pkg
 wget https://raw.githubusercontent.com/vercel/pkg-fetch/6ffa969bc037f33cd5c926b8706324740c8818af/patches/node.v18.5.0.cpp.patch
 patch -p1 -i ./node.v18.5.0.cpp.patch
 
@@ -621,9 +626,9 @@ make -j4
 PKG_EXECPATH=PKG_INVOKE_NODEJS ./node -v
 ```
 
-Next, I applied changes to a convenient hook function that pkg adds to node,
-after cached data is parsed: `FixSourcelessScript`. The following changes make
-it so that any `Script` that loads from cached data will print out the
+Next, I applied changes to a convenient hook function that `vercel/pkg` adds to
+node, after cached data is parsed: `FixSourcelessScript`. The following changes
+make it so that any `Script` that loads from cached data will print out the
 disassembly of the deserialized function, and recursively does the same for
 called functions. I also added prints of per-function constants (e.g. to see
 variable names) and object definitions. It will print memory addresses that will
@@ -728,7 +733,8 @@ And... Finally! SUCCESS!
 
 ### Reverse Engineering V8 Assembly
 
-Let's take a moment to define "success", here. For `action.js`, we get this:
+Let's take a moment to define "success", here. For `action.js`, a file that
+likely just has an enum definition in it, we get all of this:
 ```js
 << OUTPUTTING DISASSEMBLY BEGIN >>
 === [0x2ce3b5f64178] DISASSEMBLY ===
@@ -1203,7 +1209,7 @@ A lot of things stand out, some of which we'll explore in follow-up questions:
   not overloaded;
 - There are some fun cheat options implemented;
 - There's an idea of "health points" that is supported, that would have been
-  tricky to balance as part of our bot!
+  tricky to balance as part of our bot if it had been enabled!
 - Most of the game update logic really lives in `world`.
 
 If we reverse engineer `world.js`, we get something like this (some function
@@ -1258,9 +1264,10 @@ function allRocketCollisions(rocket) {
 ```
 
 Some new interesting notes:
-- Rockets aren't checked for Y out-of-bounds! I tested this to be sure -- if I
-  shoot a rocket directly up, for example, the server keeps sending me its
-  position even when it gets very deep in the negatives;
+- Rockets aren't checked for Y out-of-bounds! I tested this to be sure after
+  seeing this and ineed -- if I shoot a rocket directly up, for example, the
+  server keeps sending me its position even when it gets very deep in the
+  negatives, never disasppearing;
 - Collisions are checked before the update step;
 - On a single tick, we find collisions between all rockets and all meteors,
   and then _handle them in the order of their collision time_.
@@ -1282,7 +1289,8 @@ function checkCollisionDuringCurrentTick(p1, p2) {
 }
 ```
 
-That settles it, then. Collisions are within-tick.
+That settles it, then. Collisions are within-tick by finding the intersection
+and only caring about the ones before the next tick (time between 0 and 1).
 
 </details>
 
@@ -1350,9 +1358,9 @@ Let's reverse `geoUtils.js`:
 // ... geoUtils.js
 
 function movingCirclesIntersection(a_pos, a_vel, a_size, b_pos, b_vel, b_size) {
-    // ... here there's a bunch of math that essentially does exactly what our
-    // earlier Python method 'collision_times' did! It sets a, b, c variables
-    // to solve with the quadratic formula and get two time 'ts' (t1, t2):
+    // ... here there's a bunch of math that essentially does what our earlier
+    // Python method 'collision_times' did! It sets up a, b, c variables to
+    // solve with the quadratic formula and get two time 'ts' (t1, t2):
     ts = [t1, t2];
     ts.map(function(t) {
         // Move the circles to the moment of collision
@@ -1373,12 +1381,12 @@ Two interesting notes here:
 - The server does `meteorUpdate` _after_ this, so our Bot will see the position
   of the collision intersection + one tick of velocity update;
 - Even though the collision happens in the middle of a tick (e.g. `t=0.43`), the
-  split meteor gets a full tick of velocity update (effectively got to move
-  `1.43` ticks).
+  split meteor gets a full tick of velocity update (the meteor effectively got
+  to move `1.43` worth of ticks in a single tick).
 
 This last point is interesting, I'm not sure I would have guessed that if I was
 still trying to simulate the game with guesswork. At least we didn't _fully_
-waste our time with reverse engineering.
+waste our time with reverse engineering, maybe?
 
 </details>
 
@@ -1561,11 +1569,11 @@ used as a seed by running `.toString()` on it.
 
 If a `RANDOM_SEED` is set through a command line argument, however, it will
 instead use that (which I checked by reversing `challenge-launcher/index.js`).
-The command line flag `randomSeed`, or its alias `mapName` both get used as a
+The command line flag `randomSeed`, or its alias `mapName` both get set the 
 seed.
 
 For the randomness in splits & spawns velocity multiplier (+- 20%), however,
-there is something interesting. The initial version of the challenge I
+there is something noteworthy. In the initial version of the challenge I
 disassembled ([here](disassembled_js/328e68f033f493ba41575fe85f335210)), it was
 using `Math.random()`, and not this `rng` seeded random number generator!
 
@@ -1578,7 +1586,7 @@ switched to use the `rng` instance.
 
 ## Rabbit Hole #2: Nostradamus
 
-So we answered all the answers we cared about to continue our Simple bot...
+So we answered all the questions we cared about to continue our Simple bot...
 
 But then I had a thought. What if... we could predict the randomness? Again, I
 like CTFs. I've predicted outputs from non-cryptographically secure random
@@ -1623,64 +1631,70 @@ implementations implement it, with other useful info.
 Turns out, it is possible to predict future outputs of this random number
 generator after seeing a few outputs. See
 [this fun example](https://blog.securityevaluators.com/hacking-the-javascript-lottery-80cc437e3b7f),
-predicting the lottery of a LA Times
-[Powerball simulator](https://graphics.latimes.com/powerball-simulator/) to show
-how unlikely you are to win. Well, if you can predict the random numbers... not
-so unlikely. :) The author of the blogpost shows how to predict future outputs
-of `Math.random()` by using the [`z3`](https://github.com/Z3Prover/z3)
+predicting the lottery of a
+[Powerball simulator](https://graphics.latimes.com/powerball-simulator/) that
+the LA Times made to show how unlikely you are to win. Well, if you can predict
+the random numbers... not so unlikely. :) The author of the blogpost shows how
+to predict future outputs of `Math.random()` by using the
+[`z3`](https://github.com/Z3Prover/z3)
 [SMT](https://en.wikipedia.org/wiki/Satisfiability_modulo_theories) solver.
 
-When doing this in V8, however, it is a little bit more nuanced. To reduce
-the overhead of going from the `MathRandom` Torque implementation to the native
-random number generation implementation, random numbers are generated in chunks
-of [64](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/numbers/math-random.h#L24)
-numbers, then they are read back-to-front, until the cache needs to be
-re-filled. Working around this is doable, though, and I would highly recommend
-the talk
+When doing this in V8, though, it is a little bit more nuanced. To reduce
+the overhead of going from the `MathRandom` [Torque](https://v8.dev/docs/torque)
+implementation to the native random number generation implementation, random
+numbers are generated in chunks of
+[64](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/numbers/math-random.h#L24)
+numbers at a time, then they are produced back-to-front, until the cache needs
+to be re-filled. Working around this is doable, though, and I would highly
+recommend the talk
 [Practical Exploitation of Math.random on V8](https://www.youtube.com/watch?v=_Iv6fBrcbAM&list=FL3xmQgwBqlHgVCsfksthvww&index=1)
 that goes through the details.
 
-So we can likely predict random numbers after seeing a few, but can we
-bruteforce the seed after seeing just one, even? How is NodeJS seeding its
-random number generator? We find that V8
+So we can likely predict random numbers after seeing a few, but could we
+bruteforce the seed after seeing just one, even? Is NodeJS appropriately seeding
+its random number generator (it's not cryptographically secure, after all)? We
+find that V8
 [assumes](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/deps/v8/src/base/utils/random-number-generator.h#L32-L35)
 that it was provided a reasonable "entropy source" from its embedder (here,
 NodeJS), otherwise it backs off to possibly weak entropy by default. And NodeJS
 does, in fact, use strong entropy coming from OpenSSL
 [here](https://github.com/nodejs/node/blob/0a18e136b4a1e860bb2befcbd1f78661ed5fb5e7/src/node.cc#L1144).
-So we won't be able to bruteforce that effectively, then. Interestingly, though,
-there was a fun bug in 2013 where NodeJS was setting the entropy pool too late
-after V8 initialized, and V8 was then seeding very poorly using just time:
+So we won't be able to bruteforce that effectively, then.
+
+Here's a fun find while I was reading about this: a bug in 2013 where NodeJS was
+setting the entropy pool too late after V8 initialized, and V8 was then seeding
+very poorly using just time:
 [bug](https://bugs.chromium.org/p/v8/issues/detail?id=2905), ouch!
 
 Ultimately, the challenge binary eventually changed (as mentioned in the
 randomness reversing section) to fully rely on `seedrandom`, removing our hopes
 of predicting V8 `Math.random` outputs from meteor observations.
 
-Our only hope to salvage `Math.random` prediction here would have been if
-`seedrandom` is getting seeded through the default path
+The last remaining use of `Math.random` to salvage our prediction learnings here
+would have been if `seedrandom` was getting seeded through the default path
 (`Math.random().toString()`). This is maybe a smaller entropy source than
-intended for the seed, since it's generating a number between `0` and `1`, which
-for JS floats (double-precision 64-bit numbers,
+intended for the seed, since it's generating a float number between `0` and `1`
+instead of 64 random bits. For JS floats (double-precision 64-bit numbers,
 [IEEE 754](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_encoding)),
-limits the amount of random bits a bit -- it amounts to 51 bits of randomness
-(sign bit always positive, exponent always equivalent to `^(-1)`, mantissa 51
-bits from `1.[...]`). Still, this is too much to bruteforce in our bot
-timeframe.
+this limits the amount of random bits somewhat -- it amounts to 52 bits of
+randomness (sign bit always positive, exponent always equivalent to `^(-1)`,
+mantissa 52 bits from `1.[...]`). Still, this is too much to bruteforce in our
+bot's timeframe.
 
 ### `seedrandom`
 
-What about `seedrandom`? It is based on [RC4](https://en.wikipedia.org/wiki/RC4).
-There are many known weaknesses with RC4 (infamously the wireless network
-encryption [WEP](https://en.wikipedia.org/wiki/Wired_Equivalent_Privacy) can be
-reliably broken to recover the key due to its (mis)use of RC4:
+What about the use of `seedrandom`? It is based on
+[RC4](https://en.wikipedia.org/wiki/RC4). There are many known weaknesses with
+RC4 (infamously the wireless network encryption
+[WEP](https://en.wikipedia.org/wiki/Wired_Equivalent_Privacy) can be reliably
+broken to recover the key due to its (mis)use of RC4:
 [details](https://en.wikipedia.org/wiki/Fluhrer,_Mantin_and_Shamir_attack)).
 That being said, I'm not aware of a useful crypto attack here that would help us
 either recover the seed or predict future outputs, for our games' timeframes.
 
-If the seed that is given to `seedrandom` has enough entropy and is secret,
-there's not much we can do, and our Nostradamus "predict everything" dream is
-gone...
+That means that if the seed that is given to `seedrandom` has enough entropy and
+is secret, there's not much we can do, and our Nostradamus "predict everything"
+dream is gone...
 
 Hold on, I remember this piece of code:
 ```js
@@ -1698,7 +1712,7 @@ exports.Blitz2024Challenge = class Blitz2024Challenge {
 ... The seed is logged! Is there a useful pattern from game logs?
 
 I looked at all my previous games and, sure enough, a set of only 5 seeds is
-used (map names):
+used and sampled from (map names):
 - `Stardreamer`
 - `Nova_Explorer`
 - `Celestial_Voyager`
@@ -1708,15 +1722,15 @@ used (map names):
 Well I certainly wish I had noticed that earlier. On the plus side, we did learn
 a bunch about `Math.random` prediction...
 
-Hey! That means we can fully predict games, doesn't it?
+Oh, hey! That means we can fully predict games, doesn't it?
 
 **HERE WE GO!**
 
 ## Rust Nostradamus Bot
 
 Let's move to Rust, because I intend to do a search over possible actions, which
-will benefit from better performance, and I don't want to implement the random
-prediction twice.
+will benefit from better performance tuning, and I don't want to implement the
+random prediction twice.
 
 I used [`pyo3`](https://github.com/PyO3/pyo3) to have Rust bindings in Python.
 The Rust code that interfaces with Python is in [`lib.rs`](bot/src/lib.rs).
@@ -1724,15 +1738,15 @@ The Rust code that interfaces with Python is in [`lib.rs`](bot/src/lib.rs).
 ### Exactly Replicate Server Logic
 
 I reimplemented the RC4 logic of `seedrandom` in
-[`seedrandom.rs`](bot/src/seedrandom.rs), with some unit tests to make sure we can
-generate the exact same floats.
+[`seedrandom.rs`](bot/src/seedrandom.rs), with some unit tests to make sure that
+we can generate the exact same floats.
 
 I wrote a helper class `GameRandom` in
 [`game_random.rs`](bot/src/game_random.rs):
 - This primarily exposes two methods: `next_spawn` and `next_splits`. Both of
   those mimic what the server does, calling `rng.random` in the same order and
   the same amount of times, to be able to predict the same meteors as the server
-  would; 
+  would in each case; 
 - It can be created with `infer_from_known_seeds`, where we give it the first
   tick `GameMessage` that the server sent us. From there, we take the first
   meteor, rewind it by one tick (since the server does spawn + update + send
@@ -1767,26 +1781,28 @@ This brought me to a score of 4815 points.
 
 Instead of picking a target with heuristics, we can now run a full simulation to
 compare various shooting options. I added a search for a sequence of moves, so
-that we give the full game plan on the first tick, within a 1s time budget.
+that we decide on the full game plan on the first tick, within a 1s time budget.
 
 For the search, I used
 [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
-Normally, it'd be best to re-use a library (e.g.
+Normally, I'd probably re-use a library (e.g.
 [this one](https://docs.rs/mcts/latest/mcts/)), but I like using Blitz as an
 opportunity to re-implement things and learn.
 
 To work with a search algorithm, we want to define our game as having search
 states (which can be seen as tree nodes) with possible actions on a state (which
 can be seen as node edges) that lead us to a new state (children nodes):
-- **State**: For our game, I create a
+- **State**: For our game, I created a
   [`game_search_state.rs`](bot/src/game_search_state.rs) struct with the
   `GameState` (active meteors & rockets and their positions, score, etc.) and
-  the already-targeted meteors.
+  the set of already-targeted meteors.
 - **Actions**: Consider each meteor we could shoot at (current or future
   predicted meteors), skipping ones we already shot or ones that we can't/won't
-  hit if we shot at them. Also include a "hold" action where we don't shoot yet.
+  hit if we shot at them. Also include a "hold" action where we don't shoot even
+  if we can.
 
-MCTS works like this at a high level:
+MCTS works like this at a high level, gradually expanding a tree of states,
+balancing exploration and exploitation:
 - _Select_: Start from our root state, select successive children nodes using
   some strategy until we reach a leaf node that has not been fully expanded yet;
 - _Expand_: Choose one of the actions that has not been expanded yet on the
@@ -1797,29 +1813,31 @@ MCTS works like this at a high level:
   before simulation. This information will inform future node selections.
 
 For heuristic purposes (e.g. to know which node to expand, or when doing
-playouts), I simulated the tentative action while there are rockets left (I
-named this "resolving" the state) to see what score a state will lead us to if
-left as-is.
+playouts), I simulated the tentative action tick-by-tick as long as there are
+rockets left (I named this "resolving" the state) to see what score a state will
+lead us to if left as-is.
 
 Doing a simulation with a heuristic is sometimes called "heavy playout", instead
-of doing random simulation. I saw better results thorought from doing that,
-presumably because the playouts are not super cheap and we don't have time to do
-a lot of exploration of the actions space with just randomness.
+of doing random simulation. I saw better results thorought from using this
+heuristic, potentially because the playouts are not super cheap and we don't
+have time to do a lot of effective exploration of the actions space with just
+randomness.
 
-I plugged this search into [`planner.rs`](bot/src/planner.rs), which just runs
-a search on the first tick (within 1s) and returns the best seen path. The
-Python bot will then just follow this plan for the rest of the game.
+I plugged this search into [`planner.rs`](bot/src/planner.rs), which initially
+just ran a search on the first tick (within 1s) and returned the best seen path.
+The Python bot will then just follow this plan for the rest of the game.
 
 ### MCTS tweaks
 
-I then spent a bit improving the MCTS search, to try and find better sequences
-of actions.
+I then spent some time improving the MCTS search, to try and find better
+sequences of actions.
 
-One quick change to improve exploration was to add a change during playout to
-sometimes pick a random action, based on a probability (in practice: 5%). This
-is like
-[`ε-greedy`](https://en.wikipedia.org/wiki/Reinforcement_learning#Exploration) in
-Reinforcement Learning. Doing this instead of tweaking the exploration constant
+One quick change to improve exploration was to add a chance during playout to
+pick a random action instead of based on heuristics, with some probability (5%).
+This is like
+[`ε-greedy`](https://en.wikipedia.org/wiki/Reinforcement_learning#Exploration)
+in Reinforcement Learning. Doing this instead of tweaking the exploration
+constant
 [`c` in MCTS' UCT](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Exploration_and_exploitation)
 consistently gave better results.
 
@@ -1830,17 +1848,18 @@ to make sure the search state can capture better solutions, and that our search
 can find them:
 - In the search state, allow actions to mess with previously planned hits (e.g.
   if we hit a meteor before some future prediction we made, this will change the
-  RNG order and make our previous predictions incorrect). Instead, just update
+  RNG order and make our previous predictions uncertain). Instead, just update
   the list of predicted hits when this happens;
 - Run MCTS for a 800ms _every tick_, instead of planning the entire game on tick
   #1. This leads to pretty long games (~15 mins), but gives us more time to
   search the late game state space.
-- Instead of picking the next move based on the MCTS node that has the most
-  visits, I always keep track of the "best seen path" and follow it.
+- Instead of picking the final next move based on the next MCTS node that has
+  the most visits, I always keep track of the "best seen path" and follow that.
 - Consider more aiming options instead of just the position where the rocket
-  and meteor centers would collide. Aiming the edges of the meteor can lead to
-  hits previously impossible (e.g. on the edge of the cannon), or hits that keep
-  the splits in-game for longer;
+  and meteor centers would collide (i.e. what `aim_ahead` gives us). Aiming at
+  the edges of the meteor can lead to hits previously impossible (e.g. on the
+  edge of the cannon right before the meteor becomes unshootable), or hits that
+  keep the splits in-game for longer;
 - [SP-MCTS](https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf)
   tweak to the UCT formulation, changes geared for single-player game usages of
   MCTS;
@@ -1855,26 +1874,28 @@ on the server!
 
 And... I got a score of -1.
 
-My bot would suddenly stop in the middle of the game it looked like. I added
-logs, and all ticks would take ~800ms, when suddenly a tick would take many
-_seconds_!
+This indicates a failure. It looked like my bot would suddenly stop in the
+middle of the game. I added more logs, and all ticks would take ~800ms, when
+suddenly a tick would take many _seconds_, despite the MCTS budget of 800ms!
 
 I got a beefy desktop not too long ago, so I suspected that it might be due to
 excessive memory usage that would be fine locally but not on server. I added
 [a lib](https://docs.rs/memory-stats/latest/memory_stats/) to print memory stats
 per tick, and sure enough the breakage would happen close to the ~1GB mark.
-Maybe the virtualization that runs our bot on server has ~1GB configured, at
-which point it will start paging out memory or similar.
+Maybe the virtualization infrastructure that runs our bot on server has ~1GB
+configured, at which point it will start paging out memory or some similar
+behavior.
 
-To work around this, I added logic so that when the tree goes past a limit of
-number of nodes, we reset the MCTS tree completely (but keep the best path
-still). This is also somewhat inspired by the "meta search" mentioned in the 
+To work around the ever-growing MCTS tree, I added logic so that when the tree
+goes past a limit of number of nodes, we reset the MCTS tree completely (but
+keep the best path still). This is also somewhat inspired by the "meta search"
+mentioned in the 
 [SP-MCTS paper](https://dke.maastrichtuniversity.nl/m.winands/documents/CGSameGame.pdf),
 where they find that running multiple MCTS from scratch gave better results then
 one long-running MCTS (with the same compute budget).
 
 From offline, this change surprisingly... Gave better scores? I saw that 4980
-was now possible!
+was now possible with my offline test run!
 
 So I ran it on the server and... **5000 points**!
 
@@ -1883,12 +1904,12 @@ Here is the final game:
 
 https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/d37d5355-6d22-460b-ac3c-6cbe9d954ee9
 
-It's cool to see the bot dodge hitting the large meteors towards the end,
+It's cool to see the bot avoid hitting the large meteors towards the end,
 focusing instead on the higher-points smaller meteors it has time to hit before
 the game ends.
 
-One tricky part when looking at such games is also that it's hard to tell when a
-move that looks weird/suboptimal is due to a lack of searching, or because it
+Some shots look a bit weird/suboptimal, but it's tricky to tell when looking at
+games  whether a weird move was due to a lack of searching, or because it
 indirectly leads to a more favorable random number sequence.
 
 ### Post-Blitz Follow-ups
@@ -1899,8 +1920,12 @@ I implemented an optimized version of "resolving" a simulation, where we can
 skip ahead to the next tick where something will happen (a hit or a spawn),
 instead of updating one tick at a time. This gave a throughput more than twice
 as fast of simulations/second! I also added multithreading to run multiple MCTS
-searches in parallel. There were other ideas in this
+searches in parallel. Both ideas allow searching more thoroughly under the same
+compute budget. There were other ideas in this
 [MCTS Survey paper](http://www.incompleteideas.net/609%20dropbox/other%20readings%20and%20resources/MCTS-survey.pdf)
 that seemed good to try, but I stopped there.
 
-In any case, I did not see a score higher than 5000 points after the fact! Phew!
+In any case, I still did not see a score higher than 5000 points after the fact!
+Phew!
+
+Thanks Coveo for such a fun challenge, as usual!
