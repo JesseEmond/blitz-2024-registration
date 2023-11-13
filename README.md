@@ -1774,7 +1774,7 @@ of actions.
 One quick change to improve exploration was to add a change during playout to
 sometimes pick a random action, based on a probability (in practice: 5%). This
 is like
-[`-greedy`](https://en.wikipedia.org/wiki/Reinforcement_learning#Exploration) in
+[`ε-greedy`](https://en.wikipedia.org/wiki/Reinforcement_learning#Exploration) in
 Reinforcement Learning. Doing this instead of tweaking the exploration constant
 [`c` in MCTS' UCT](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Exploration_and_exploitation)
 consistently gave better results.
