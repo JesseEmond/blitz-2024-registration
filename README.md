@@ -196,7 +196,7 @@ def aim_ahead(source: Vector, rocket_speed: float,
 def solve_quadratic(a: float, b: float,
                     c: float) -> Optional[Tuple[float, float]]:
   if a == 0:
-    x = -c / b  // linear equation solving
+    x = -c / b  # linear equation solving
     return x, x
   p = -b / (2 * a)
   det = b * b - 4 * a * c
