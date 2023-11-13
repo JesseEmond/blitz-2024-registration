@@ -91,9 +91,9 @@ As for the specifics of how collisions are checked (checked every tick? or at
 the sub-tick (continuous) level?) or how split positions are determined, we
 aren't told -- we'll have to make guesses and check if they're right.
 
-A game might look like this (for example, this is a TODO points game):
+A game might look like this (for example, this is a 3655 points game):
 
-TODO(emond): Include example game vid, + score above.
+[Game_3655pts.webm](https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/324d7b47-27da-462b-9a22-0fe06c6327bd)
 
 ## Simple Bot
 
@@ -1842,7 +1842,8 @@ So I ran it on the server and... **5000 points**!
 
 ## Winning Game
 Here is the final game:
-TODO: include video 5000pts
+
+[Game_5000pts.webm](https://github.com/JesseEmond/blitz-2024-registration/assets/1843555/cb64d3a2-257e-4397-8926-da7d6870a836)
 
 It's cool to see the bot dodge hitting the large meteors towards the end,
 focusing instead on the higher-points smaller meteors it has time to hit before
