@@ -196,7 +196,7 @@ def aim_ahead(source: Vector, rocket_speed: float,
   ts = solve_quadratic(a, b, c)
   if not ts:
     return None
-  t = max(t)
+  t = max(ts)
   return target.pos.add(target.vel.scale(t))
 
 def solve_quadratic(a: float, b: float,
