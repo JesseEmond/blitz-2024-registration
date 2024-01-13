@@ -193,15 +193,18 @@ def aim_ahead(source: Vector, rocket_speed: float,
   a = target.vel.dot(target.vel) - rocket_speed * rocket_speed
   b = 2 * target.vel.dot(delta_pos)
   c = delta_pos.dot(delta_pos)
-  ts = solve_quadratic(a, b, c)
+  ts = solve_quadratic(a, b, c) or []
+  ts = [t for t in ts if t >= 0]
   if not ts:
     return None
-  t = max(ts)
+  t = min(ts)
   return target.pos.add(target.vel.scale(t))
 
 def solve_quadratic(a: float, b: float,
                     c: float) -> Optional[Tuple[float, float]]:
   if a == 0:
+    if b == 0:  # constant equation solving
+      return (0, 0) if c == 0 else None
     x = -c / b  # linear equation solving
     return x, x
   p = -b / (2 * a)
